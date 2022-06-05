@@ -1,6 +1,6 @@
 {
-  "name": "vAmigaWebUAT",
-  "short_name": "vAmigaWebUAT",
+  "name": "UATvAmigaWeb",
+  "short_name": "UATvAmigaWeb",
   "start_url": "/uat/",
   "scope": ".",
   "display": "fullscreen",
