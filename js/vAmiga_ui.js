@@ -1425,18 +1425,32 @@ function InitWrappers() {
         worklet_node.connect(audioContext.destination);        
     }
     
+    unlock_audio_object= function(audio_obj){
+        audio_obj.play();
+        audio_obj.pause();
+        audio_obj.currentTime = 0;
+    }
+
 
     click_unlock=async function() {
         await connect_audio_processor();
         if(audioContext.state === 'running') {
             document.removeEventListener('click',click_unlock);
         }
+        unlock_audio_object(audio_df_eject);
+        unlock_audio_object(audio_df_insert);
+        unlock_audio_object(audio_df_step);
+        unlock_audio_object(audio_hd_step);
     }
     touch_unlock=async function() {
         await connect_audio_processor();
         if(audioContext.state === 'running') {
             document.getElementById('canvas').removeEventListener('touchstart',touch_unlock);
         }
+        unlock_audio_object(audio_df_eject);
+        unlock_audio_object(audio_df_insert);
+        unlock_audio_object(audio_df_step);
+        unlock_audio_object(audio_hd_step);
     }
     document.addEventListener('click',click_unlock, false);
     //iOS safari does not bubble click events on canvas so we add this extra event handler here
