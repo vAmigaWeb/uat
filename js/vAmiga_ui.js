@@ -383,21 +383,21 @@ function message_handler(msg, data, data2)
     }
     else if(msg == "MSG_DRIVE_STEP")
     {
-        audio_df_step.play();
+        audio_df_step.play().catch();
         $("#drop_zone").html(`df${data} ${data2}`);
     }
     else if(msg == "MSG_DISK_INSERT")
     {
-        audio_df_insert.play();
+        audio_df_insert.play().catch();
     }
     else if(msg == "MSG_DISK_EJECT")
     {
         $("#drop_zone").html(`df${data} eject`);
-        audio_df_eject.play();
+        audio_df_eject.play().catch();
     }
     else if(msg == "MSG_HDR_STEP")
     {
-        audio_hd_step.play();
+        audio_hd_step.play().catch();
      //   console.log(`MSG_DRIVE_STEP ${data} ${data2}`);
         $("#drop_zone").html(`dh${data} ${data2}`);
     }
@@ -1427,8 +1427,8 @@ function InitWrappers() {
     
     unlock_audio_object= function(audio_obj){
         audio_obj.play();
-//        audio_obj.pause();
-//        audio_obj.currentTime = 0;
+        audio_obj.pause();
+        audio_obj.currentTime = 0;
     }
 
 
