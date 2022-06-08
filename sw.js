@@ -1,4 +1,4 @@
-const cache_name = 'vAmiga_app_cache_v2022_06_08b';
+const cache_name = 'vAmiga_app_cache_v2022_06_08c';
 
 // install event
 self.addEventListener('install', evt => {
