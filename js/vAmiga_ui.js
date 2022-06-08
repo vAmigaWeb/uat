@@ -1427,26 +1427,32 @@ function InitWrappers() {
     
     unlock_audio_object= function(audio_obj){
         audio_obj.play();
-        audio_obj.pause();
-        audio_obj.currentTime = 0;
+//        audio_obj.pause();
+//        audio_obj.currentTime = 0;
     }
 
 
-    click_unlock=async function() {
-        await connect_audio_processor();
-        if(audioContext.state === 'running') {
-            document.removeEventListener('click',click_unlock);
+    click_unlock=function() {
+        unlock_webaudio=async ()=>{
+            await connect_audio_processor();
+            if(audioContext.state === 'running') {
+                document.removeEventListener('click',click_unlock);
+            }
         }
+        unlock_webaudio();
         unlock_audio_object(audio_df_eject);
         unlock_audio_object(audio_df_insert);
         unlock_audio_object(audio_df_step);
         unlock_audio_object(audio_hd_step);
     }
-    touch_unlock=async function() {
-        await connect_audio_processor();
-        if(audioContext.state === 'running') {
-            document.getElementById('canvas').removeEventListener('touchstart',touch_unlock);
+    touch_unlock=function() {
+        unlock_webaudio=async ()=>{
+            await connect_audio_processor();
+            if(audioContext.state === 'running') {
+                document.getElementById('canvas').removeEventListener('touchstart',touch_unlock);
+            }
         }
+        unlock_webaudio();
         unlock_audio_object(audio_df_eject);
         unlock_audio_object(audio_df_insert);
         unlock_audio_object(audio_df_step);
