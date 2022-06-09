@@ -1426,41 +1426,49 @@ function InitWrappers() {
     }
     
     unlock_audio_object= function(audio_obj){
-        audio_obj.play();
-        audio_obj.pause();
-        audio_obj.currentTime = 0;
+        let play_promise=audio_obj.play();
+        if(play_promise !== undefined) {
+            play_promise.then(_ => {
+          audio_obj.pause();
+          audio_obj.currentTime = 0;
+        })
+        .catch(error => {});
+        }
     }
 
+    click_unlock_WebAudio=async function() {
+        await connect_audio_processor();
+        if(audioContext.state === 'running') {
+            document.removeEventListener('click',click_unlock_WebAudio);
+        }
+    }
+    touch_unlock_WebAudio=async function() {
+        await connect_audio_processor();
+        if(audioContext.state === 'running') {
+            document.getElementById('canvas').removeEventListener('touchstart',touch_unlock_WebAudio);
+        }
+    }
 
-    click_unlock=function() {
+    click_unlock_Audios=function() {
         unlock_audio_object(audio_df_eject);
         unlock_audio_object(audio_df_insert);
         unlock_audio_object(audio_df_step);
         unlock_audio_object(audio_hd_step);
-        unlock_webaudio=async ()=>{
-            await connect_audio_processor();
-            if(audioContext.state === 'running') {
-                document.removeEventListener('click',click_unlock);
-            }
-        }
-        unlock_webaudio();
+        document.removeEventListener('click',click_unlock_Audios);
     }
-    touch_unlock=function() {
+    touch_unlock_Audios=function() {
         unlock_audio_object(audio_df_eject);
         unlock_audio_object(audio_df_insert);
         unlock_audio_object(audio_df_step);
         unlock_audio_object(audio_hd_step);
-        unlock_webaudio=async ()=>{
-            await connect_audio_processor();
-            if(audioContext.state === 'running') {
-                document.getElementById('canvas').removeEventListener('touchstart',touch_unlock);
-            }
-        }
-        unlock_webaudio();
+        document.getElementById('canvas').removeEventListener('touchstart',touch_unlock_Audios);
     }
-    document.addEventListener('click',click_unlock, false);
+    document.addEventListener('click',click_unlock_WebAudio, false);
+    document.addEventListener('click',click_unlock_Audios, false);
+
     //iOS safari does not bubble click events on canvas so we add this extra event handler here
-    document.getElementById('canvas').addEventListener('touchstart',touch_unlock,false);
+    document.getElementById('canvas').addEventListener('touchstart',touch_unlock_WebAudio,false);
+    document.getElementById('canvas').addEventListener('touchstart',touch_unlock_Audios,false);
 
     get_audio_context=function() {
         if (typeof Module === 'undefined'
@@ -3165,7 +3173,7 @@ release_key('ControlLeft');`;
         //install_custom_keys();
     }
 
-    $("#button_show_menu").click();
+    $("#navbar").collapse('show')
     return;
 }
 
