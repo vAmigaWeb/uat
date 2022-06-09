@@ -29,7 +29,7 @@ let load_sound = async function(url){
     let audio_buffer= await audioContext.decodeAudioData(buffer);
     return audio_buffer;
 } 
-let sound_volumne=0.4;// 40 %
+let sound_volumne=0.5;// 50%
 let play_sound = function(audio_buffer){
         if(audio_buffer== null)
         {                 
