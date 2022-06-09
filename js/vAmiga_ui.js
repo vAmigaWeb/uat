@@ -45,13 +45,13 @@ let audio_hd_step=null;
 async function load_all_sounds()
 {
     if(audio_df_insert==null)
-        audio_df_insert=await load_sound('sounds/insert.ogg');
+        audio_df_insert=await load_sound('sounds/insert.mp3');
     if(audio_df_eject==null)
-        audio_df_eject=await load_sound('sounds/eject.ogg');
+        audio_df_eject=await load_sound('sounds/eject.mp3');
     if(audio_df_step == null)
-        audio_df_step=await load_sound('sounds/step.ogg');
+        audio_df_step=await load_sound('sounds/step.mp3');
     if(audio_hd_step == null)   
-        audio_hd_step=await load_sound('sounds/stephd.ogg');
+        audio_hd_step=await load_sound('sounds/stephd.mp3');
 }
 load_all_sounds();
 
