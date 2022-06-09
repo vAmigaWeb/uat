@@ -23,11 +23,37 @@ const AudioContext = window.AudioContext || window.webkitAudioContext;
 const audioContext = new AudioContext();
 let audio_connected=false;
 
-const audio_df_insert = new Audio('sounds/insert.ogg');
-const audio_df_eject = new Audio('sounds/eject.ogg');
-const audio_df_step = new Audio('sounds/step.ogg');
-const audio_hd_step = new Audio('sounds/stephd.ogg');
+let load_sound = async function(url){
+    let response = await fetch(url);
+    let buffer = await response.arrayBuffer();
+    let audio_buffer= await audioContext.decodeAudioData(buffer);
+    return audio_buffer;
+} 
+let play_sound = function(audio_buffer){
+        if(audio_buffer== null)
+            return;
+        const source = audioContext.createBufferSource();
+        source.buffer = audio_buffer;
+        source.connect(audioContext.destination);
+        source.start();
+}   
 
+let audio_df_insert=null;
+let audio_df_eject=null;
+let audio_df_step=null;
+let audio_hd_step=null;
+async function load_all_sounds()
+{
+    if(audio_df_insert==null)
+        audio_df_insert=await load_sound('sounds/insert.ogg');
+    if(audio_df_eject==null)
+        audio_df_eject=await load_sound('sounds/eject.ogg');
+    if(audio_df_step == null)
+        audio_df_step=await load_sound('sounds/step.ogg');
+    if(audio_hd_step == null)   
+        audio_hd_step=await load_sound('sounds/stephd.ogg');
+}
+load_all_sounds();
 
 
 const load_script= (url) => {
@@ -383,21 +409,32 @@ function message_handler(msg, data, data2)
     }
     else if(msg == "MSG_DRIVE_STEP")
     {
-        audio_df_step.play().catch();
+        load_all_sounds();
+        play_sound(audio_df_step);   
+        /*
+        fetch('sounds/step.ogg')
+        .then(response => response.arrayBuffer())
+        .then(arrayBuffer => audioContext.decodeAudioData(arrayBuffer))
+        .then(audioBuffer => {
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+            source.start();
+        });*/
         $("#drop_zone").html(`df${data} ${data2}`);
     }
     else if(msg == "MSG_DISK_INSERT")
     {
-        audio_df_insert.play().catch();
+        play_sound(audio_df_insert); 
     }
     else if(msg == "MSG_DISK_EJECT")
     {
         $("#drop_zone").html(`df${data} eject`);
-        audio_df_eject.play().catch();
+        play_sound(audio_df_eject); 
     }
     else if(msg == "MSG_HDR_STEP")
     {
-        audio_hd_step.play().catch();
+        play_sound(audio_hd_step); 
      //   console.log(`MSG_DRIVE_STEP ${data} ${data2}`);
         $("#drop_zone").html(`dh${data} ${data2}`);
     }
@@ -1424,17 +1461,6 @@ function InitWrappers() {
         };
         worklet_node.connect(audioContext.destination);        
     }
-    
-    unlock_audio_object= function(audio_obj){
-        let play_promise=audio_obj.play();
-        if(play_promise !== undefined) {
-            play_promise.then(_ => {
-          audio_obj.pause();
-          audio_obj.currentTime = 0;
-        })
-        .catch(error => {});
-        }
-    }
 
     click_unlock_WebAudio=async function() {
         await connect_audio_processor();
@@ -1449,26 +1475,10 @@ function InitWrappers() {
         }
     }
 
-    click_unlock_Audios=function() {
-        unlock_audio_object(audio_df_eject);
-        unlock_audio_object(audio_df_insert);
-        unlock_audio_object(audio_df_step);
-        unlock_audio_object(audio_hd_step);
-        document.removeEventListener('click',click_unlock_Audios);
-    }
-    touch_unlock_Audios=function() {
-        unlock_audio_object(audio_df_eject);
-        unlock_audio_object(audio_df_insert);
-        unlock_audio_object(audio_df_step);
-        unlock_audio_object(audio_hd_step);
-        document.getElementById('canvas').removeEventListener('touchstart',touch_unlock_Audios);
-    }
     document.addEventListener('click',click_unlock_WebAudio, false);
-    document.addEventListener('click',click_unlock_Audios, false);
 
     //iOS safari does not bubble click events on canvas so we add this extra event handler here
     document.getElementById('canvas').addEventListener('touchstart',touch_unlock_WebAudio,false);
-    document.getElementById('canvas').addEventListener('touchstart',touch_unlock_Audios,false);
 
     get_audio_context=function() {
         if (typeof Module === 'undefined'
