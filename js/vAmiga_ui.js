@@ -29,12 +29,21 @@ let load_sound = async function(url){
     let audio_buffer= await audioContext.decodeAudioData(buffer);
     return audio_buffer;
 } 
+let sound_volumne=0.4;// 40 %
 let play_sound = function(audio_buffer){
         if(audio_buffer== null)
+        {                 
+            load_all_sounds();
             return;
+        }
         const source = audioContext.createBufferSource();
         source.buffer = audio_buffer;
-        source.connect(audioContext.destination);
+
+        let gain_node = audioContext.createGain();
+        gain_node.gain.value = sound_volumne; 
+        gain_node.connect(audioContext.destination);
+
+        source.connect(gain_node);
         source.start();
 }   
 
@@ -409,18 +418,7 @@ function message_handler(msg, data, data2)
     }
     else if(msg == "MSG_DRIVE_STEP")
     {
-        load_all_sounds();
         play_sound(audio_df_step);   
-        /*
-        fetch('sounds/step.ogg')
-        .then(response => response.arrayBuffer())
-        .then(arrayBuffer => audioContext.decodeAudioData(arrayBuffer))
-        .then(audioBuffer => {
-            const source = audioContext.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(audioContext.destination);
-            source.start();
-        });*/
         $("#drop_zone").html(`df${data} ${data2}`);
     }
     else if(msg == "MSG_DISK_INSERT")
