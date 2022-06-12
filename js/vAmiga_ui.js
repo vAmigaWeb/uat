@@ -3190,7 +3190,8 @@ release_key('ControlLeft');`;
         //install_custom_keys();
     }
 
-    $("#navbar").collapse('show')
+    //$("#navbar").collapse('show');
+     $("#button_show_menu").click();
     return;
 }
 
