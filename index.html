@@ -851,8 +851,7 @@ goes into edit mode which takes you right back to here ...
           if (outputElement) outputElement.value = ''; // clear browser cache
           return async function(text) {
             console.log(text);
-
-            if(typeof live_debug_output == 'undefined') 
+/*            if(typeof live_debug_output == 'undefined') 
               return;
             if(!live_debug_output)
               return;
@@ -870,6 +869,7 @@ goes into edit mode which takes you right back to here ...
                 //outputElement.scrollTop = outputElement.scrollHeight; // focus on bottom
               }              
             //}, 0);
+*/
           };
         })(),
         printErr: function(text) {
