@@ -1833,11 +1833,11 @@ function InitWrappers() {
 
 
     window.addEventListener("orientationchange", function() {
-        setTimeout(()=>wasm_set_display(""), 300);
+        setTimeout(()=>wasm_set_display(""), 0);
     });
 
     window.addEventListener("resize", function() {
-        setTimeout(()=>wasm_set_display(""), 300);
+        setTimeout(()=>wasm_set_display(""), 0);
     });
     
     $('#navbar').on('hide.bs.collapse', function () {
