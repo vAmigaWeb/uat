@@ -1832,13 +1832,12 @@ function InitWrappers() {
     });
 
 
-
     window.addEventListener("orientationchange", function() {
-        setTimeout(()=>wasm_set_display(""), 500);
+        setTimeout(()=>wasm_set_display(""), 300);
     });
 
     window.addEventListener("resize", function() {
-        setTimeout(()=>wasm_set_display(""), 500);
+        setTimeout(()=>wasm_set_display(""), 300);
     });
     
     $('#navbar').on('hide.bs.collapse', function () {
