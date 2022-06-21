@@ -1833,7 +1833,7 @@ function InitWrappers() {
 
 
     window.addEventListener("orientationchange", function() {
-        setTimeout(()=>wasm_set_display(""), 0);
+        setTimeout(()=>wasm_set_display(""), 500);
     });
 
     window.addEventListener("resize", function() {
