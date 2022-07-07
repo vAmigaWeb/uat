@@ -1360,7 +1360,6 @@ function InitWrappers() {
     wasm_set_target_fps = Module.cwrap('wasm_set_target_fps', 'undefined', ['number']);
     wasm_get_renderer = Module.cwrap('wasm_get_renderer', 'number');
     wasm_get_config_item = Module.cwrap('wasm_get_config_item', 'number', ['string']);
-    wasm_get_core_version = Module.cwrap('wasm_get_core_version', 'string');
 
 
 
@@ -2470,144 +2469,15 @@ $('.layer').change( function(event) {
         $("#modal_settings").focus();
     });
 
-//---------- update dialog --------
-
-    set_settings_cache_value = async function (key, value)
-    {
-        let settings = await caches.open('settings');
-        await settings.put(key, new Response(value) );
-    }
-    get_settings_cache_value= async function (key)
-    {
-        let settings = await caches.open('settings');
-        let response=await settings.match(key)
-        if(response==undefined)
-            return null;
-        return await response.text();
-    }
 
     document.getElementById('button_update').onclick = async function() 
     {
-        let current_version= await get_settings_cache_value('active_version');
-        if(current_version == null)
-        {//no version management then clear all caches
-            let keys = await caches.keys();
-            console.log('deleting cache files:'+keys);
-            await Promise.all(keys.map(key => caches.delete(key)));
-        }
-        if(typeof sw_version != 'undefined')
-        {
-            set_settings_cache_value('active_version', sw_version.cache_name);        
-        }
-        window.location.reload();
+        let keys = await caches.keys();
+        console.log('deleting cache files:'+keys);
+        await Promise.all(keys.map(key => caches.delete(key)));
+
+        window.location.reload(true);
     }
-    show_new_version_toast= ()=>{
-        $(".toast").toast({autohide: false});
-        $('.toast').toast('show');
-    }
-
-    //when the serviceworker talks with us ...  
-    navigator.serviceWorker.addEventListener("message", async (evt) => {
-        //1. version feststellen
-        //open settings lese active_version
-        current_version = await get_settings_cache_value("active_version");
-        
-        let current_ui='unkown';
-        if(current_version != null)
-        {
-            current_ui=current_version.split('@')[1];
-        }
-
-        let cache_names=await caches.keys();
-        let version_selector = `
-        manage already installed versions:
-        <br>
-        <select id="version_selector" class="ml-2" style="background-color:var(--darkbg);color:var(--light);border-radius:6px;border-width:2px;border-color:var(--light);">`;
-        for(c_name of cache_names)
-        {
-            let core_name= c_name.split('@')[0];
-            let ui_name= c_name.split('@')[1];
-            let selected=c_name==current_version?"selected":"";
-            if(c_name != "settings")
-            {
-                version_selector+=`<option ${selected} value="${c_name}">core ${core_name}, ui ${ui_name}</option>`;
-            }
-        }
-        version_selector+=
-        `</select>
-        
-        <button type="button" id="activate_version" class="btn btn-primary btn-sm px-1 py-0">activate</button>
-        <button type="button" id="remove_version" class="btn btn-danger btn-sm px-1 py-0"><svg style="width:1.5em;height:1.5em"><use xlink:href="img/sprites.svg#trash"/></svg>
-        </button>
-        `;
-
-        //2. diese vergleichen mit der des Service workers
-        sw_version=evt.data;
-        if(sw_version.cache_name != current_version)
-        {
-            let upgrade_info = `    
-            currently active version:<br>
-            <span class="ml-2 px-1 outlined">core <i>${wasm_get_core_version()}</i></span> <span class="ml-2 px-1 outlined">ui <i>${current_ui}</i></span><br><br>
-            new available version: <br>
-            <span class="ml-2 px-1 outlined">core <i>${sw_version.core}</i></span> <span class="ml-2 px-1 outlined">ui <i>${sw_version.ui}</i></span><br>
-            <br>
-            Did you know that upgrading the core may break your saved snapshots?<br/>
-            Don't mind you can still select and activate an older installation to load it ...
-            `;
-
-            $('#update_dialog').html(upgrade_info);
-            $('#version_display').html(`${upgrade_info} 
-            <br><br>
-            ${version_selector}`);
-            
-            show_new_version_toast();
-            $("#button_update").attr("class","btn btn-success");
-            $("#button_update").text(`download new core ${sw_version.core} ui ${sw_version.ui}`)
-        }
-        else
-        {
-            $("#version_display").html(`
-            currently active version:<br>
-            <span class="ml-2 px-1 outlined">core <i>${wasm_get_core_version()}</i></span> <span class="ml-2 px-1 outlined">ui <i>${current_ui}</i></span>
-            <br><br>
-            ${version_selector}`
-            );
-            $("#button_update").attr("class","btn btn-secondary");
-            $("#button_update").text(`reload current version (in case you trashed it)`)
-        }
-        //document.getElementById('version_selector').onchange = function() {
-        //}
-        document.getElementById('remove_version').onclick = function() {
-            let select = document.getElementById('version_selector');
-            let cache_name = select.value;
-            caches.delete(cache_name);
-            select.options[select.selectedIndex].remove();
-            if(current_version == cache_name)
-            {//when removing the current version, activate latest version
-                set_settings_cache_value("active_version",sw_version.cache_name);    
-            }
-            if(select.options.length==0)
-            {
-                document.getElementById('remove_version').disabled=true;        
-                document.getElementById('activate_version').disabled=true;
-            }
-        }
-        document.getElementById('activate_version').onclick = function() {
-            let cache_name = document.getElementById('version_selector').value; 
-            set_settings_cache_value("active_version",cache_name);
-            window.location.reload();
-        }
-    });
-
-
-    // ask service worker to send us a version message
-    // wait until it is active
-    navigator.serviceWorker.ready
-    .then( (registration) => {
-        if (registration.active) {
-            registration.active.postMessage('version');
-        }
-    });
 
     setup_browser_interface();
 
