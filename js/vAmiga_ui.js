@@ -1,4 +1,4 @@
-let global_apptitle="vAmiga - start screen"
+let global_apptitle="vAmiga - start screen 1"
 let call_param_openROMS=false;
 let call_param_2ndSID=null;
 let call_param_navbar=null;
