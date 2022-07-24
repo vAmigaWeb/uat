@@ -2550,16 +2550,14 @@ $('.layer').change( function(event) {
             let ui_name= name_parts[1];
             let selected=c_name==current_version?"selected":"";
 
-            if(location.pathname.startsWith("/uat"))
-            {//uat version doesn't show regular versions
-                if(c_name.includes('@') && ui_name.endsWith("uat"))
-                {
-                    version_selector+=`<option ${selected} value="${c_name}">core ${core_name}, ui ${ui_name}</option>`;
-                }
-            }
-            else 
-            {//regular version doesn't show uat versions
-                if(c_name.includes('@') && !ui_name.endsWith("uat"))
+            if(c_name.includes('@'))
+            {   
+                if(//uat version should not show regular versions and vice versa
+                    location.pathname.startsWith("/uat") ?
+                        ui_name.endsWith("uat")
+                    :
+                        !ui_name.endsWith("uat")
+                )
                 {
                     version_selector+=`<option ${selected} value="${c_name}">core ${core_name}, ui ${ui_name}</option>`;
                 }
