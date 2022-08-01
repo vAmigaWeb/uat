@@ -1062,9 +1062,9 @@ function updateGlobalBufferAndViews(buf) {
   Module['HEAPF64'] = HEAPF64 = new Float64Array(buf);
 }
 
-var TOTAL_STACK = 33554432;
+var TOTAL_STACK = 268435456;
 
-var INITIAL_MEMORY = Module['INITIAL_MEMORY'] || 268435456;
+var INITIAL_MEMORY = Module['INITIAL_MEMORY'] || 1342177280;
 
 // include: runtime_init_table.js
 // In regular non-RELOCATABLE mode the table is exported
