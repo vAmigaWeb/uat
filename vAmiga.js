@@ -12174,6 +12174,11 @@ var _wasm_has_disk = Module["_wasm_has_disk"] = function() {
 };
 
 /** @type {function(...*):?} */
+var _wasm_eject_disk = Module["_wasm_eject_disk"] = function() {
+  return (_wasm_eject_disk = Module["_wasm_eject_disk"] = Module["asm"]["wasm_eject_disk"]).apply(null, arguments);
+};
+
+/** @type {function(...*):?} */
 var _wasm_export_disk = Module["_wasm_export_disk"] = function() {
   return (_wasm_export_disk = Module["_wasm_export_disk"] = Module["asm"]["wasm_export_disk"]).apply(null, arguments);
 };
