@@ -2,8 +2,8 @@
 <head>
 <script>
 var stop = false;
-var frameCount = 0;
-var fps, fpsInterval, startTime, now, then, elapsed;
+var frameCount = 0, current_frames=0;
+var fps, fpsInterval, startTime, now, then, elapsed, last_current=0;
 let box_count=100;
 
 
@@ -12,12 +12,11 @@ function startAnimating(fps) {
     then = Date.now();
     startTime = then;
     frameCount = 0;
+    current_frames=0;
 }
 
 
 _animate = function() {
-
-    // stop
     if (stop) {
         return;
     }
@@ -33,18 +32,31 @@ _animate = function() {
   
     // if enough time has elapsed, draw the next frame
 
-    if (elapsed > fpsInterval) {
+    if (elapsed > fpsInterval /*20 ms*/) {
 
         // Get ready for next frame by setting then=now, but...
         // Also, adjust for fpsInterval not being multiple of 16.67
         then = now - (elapsed % fpsInterval);
 
-
-        // TESTING...Report #seconds since start and achieved fps.
+        frameCount++;
+        current_frames++;
         var sinceStart = now - startTime;
-        var currentFps = Math.round(1000 / (sinceStart / ++frameCount) * 100) / 100;
+        if(now - last_current  > 1000)
+        {
+            currentFps = current_frames;
+            current_frames=0;
+            last_current=now;
+
+        }
+        var avgFps = Math.round(1000 / (sinceStart / frameCount) );
         var results = document.getElementById('results');
-        results.innerHTML=("Elapsed time= " + Math.round(sinceStart / 1000 * 100) / 100 + " secs @ " + currentFps + " fps.");
+        results.innerHTML=(`
+        Elapsed time=${Math.round(sinceStart / 1000 * 100) / 100} 
+        <br>
+        ${currentFps} fps 
+        <br>
+        ${avgFps} fps average since start
+        <br>`);
 
 
         // draw stuff here
@@ -53,9 +65,11 @@ _animate = function() {
         
         for(let b=0;b<box_count;b++)
         {
-            ctx.fillStyle = `rgb(${b%255}, 0, ${100+sinceStart%100})`;
-            let posx= b%200;
-            ctx.fillRect(posx, posx, 50, 50);
+            ctx.fillStyle = `rgb(${Math.random()*255},${Math.random()*255} , ${Math.random()*255})`;
+            let posx= Math.random()*250;
+            let posy= Math.random()*250;
+            
+            ctx.fillRect(posx, posy, 50, 50);
         }
     }
 }
@@ -67,15 +81,16 @@ _animate();
 </script>
 
 </head>
-<body>
+<body style="background-color: black;color:darkgrey">
 
 
 <h3>requestAnimationFrame FPS problem on z3</h3>
 <p id="results">Results:</p>
-<canvas id="canvas" width=300 height=200></canvas>
-<br>
+
 boxes to draw<input type="number" value="100" onchange="box_count=this.value;startAnimating(50)"> 
 <button type="button" onclick="stop=true">stop</button>
 <button type="button" onclick="if(stop==true) {stop=false;startAnimating(50);_animate();}">start</button>
+<br><br>
+<canvas id="canvas" width=300 height=300></canvas>
 </body>
 </html>
