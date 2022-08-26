@@ -3,31 +3,35 @@
 <script>
 var stop = false;
 var frameCount = 0, current_frames=0;
-var fps, fpsInterval, startTime, now, then, elapsed, last_current=0;
+var fps, fpsInterval, startTime, then, elapsed, last_current=0;
 let box_count=100;
 
 
 function startAnimating(fps) {
     fpsInterval = 1000 / fps;
-    then = Date.now();
+    then = 0;
     startTime = then;
     frameCount = 0;
     current_frames=0;
 }
 
 
-_animate = function() {
+_animate = function(now) {
     if (stop) {
         return;
     }
-
     // request another frame
 
     requestAnimationFrame(_animate);
 
     // calc elapsed time since last loop
 
-    now = Date.now();
+//    now = Date.now();
+
+    if(then==0)
+    {
+        then=now;
+    }
     elapsed = now - then;
   
     // if enough time has elapsed, draw the next frame
@@ -76,7 +80,7 @@ _animate = function() {
 
 
 startAnimating(50);
-_animate();
+requestAnimationFrame(_animate);
 
 </script>
 
@@ -89,7 +93,7 @@ _animate();
 
 boxes to draw<input type="number" value="100" onchange="box_count=this.value;startAnimating(50)"> 
 <button type="button" onclick="stop=true">stop</button>
-<button type="button" onclick="if(stop==true) {stop=false;startAnimating(50);_animate();}">start</button>
+<button type="button" onclick="if(stop==true) {stop=false;startAnimating(50);requestAnimationFrame(_animate);}">start</button>
 <br><br>
 <canvas id="canvas" width=300 height=300></canvas>
 </body>

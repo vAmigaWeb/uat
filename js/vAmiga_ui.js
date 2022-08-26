@@ -1346,8 +1346,43 @@ function InitWrappers() {
     wasm_toggleFullscreen = Module.cwrap('wasm_toggleFullscreen', 'undefined');
     wasm_joystick = Module.cwrap('wasm_joystick', 'undefined', ['string']);
     wasm_reset = Module.cwrap('wasm_reset', 'undefined');
-    wasm_halt = Module.cwrap('wasm_halt', 'undefined');
-    wasm_run = Module.cwrap('wasm_run', 'undefined');
+    wasm_halt_old = Module.cwrap('wasm_halt', 'undefined');
+
+    stop_request_animation_frame=true;
+    wasm_halt=function () {
+        wasm_halt_old();
+        stop_request_animation_frame=true;
+    }
+
+    wasm_run_old=Module.cwrap('wasm_run', 'undefined');
+    wasm_draw_one_frame= Module.cwrap('wasm_draw_one_frame', 'undefined');
+
+    do_animation_frame=null;
+    wasm_run = function () {
+        wasm_run_old();        
+        if(do_animation_frame == null)
+        {
+            do_animation_frame = function(now) {
+                // request another frame
+                if(!stop_request_animation_frame)
+                {
+                    requestAnimationFrame(do_animation_frame);   
+                }
+                let executed=Module._wasm_draw_one_frame(now);
+                if(executed>0)
+                {
+                    draw_one_frame(); // to gather joystick information for example 
+                }
+            }
+        }  
+        if(stop_request_animation_frame)
+        {
+            stop_request_animation_frame=false;
+            requestAnimationFrame(do_animation_frame);   
+        }
+    }
+
+
     wasm_take_user_snapshot = Module.cwrap('wasm_take_user_snapshot', 'undefined');
     wasm_pull_user_snapshot_file = Module.cwrap('wasm_pull_user_snapshot_file', 'string');
     wasm_delete_user_snapshot = Module.cwrap('wasm_delete_user_snapshot', 'undefined');
