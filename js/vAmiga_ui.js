@@ -382,7 +382,9 @@ function message_handler(msg, data, data2)
     else if(msg == "MSG_DRIVE_STEP" || msg == "MSG_DRIVE_POLL")
     {
         play_sound(audio_df_step);   
-        $("#drop_zone").html(`df${data} ${data2.toString().padStart(2, '0')}`);
+        if(wasm_has_disk("df0")){
+            $("#drop_zone").html(`df${data} ${data2.toString().padStart(2, '0')}`);
+        }
     }
     else if(msg == "MSG_DISK_INSERT")
     {
@@ -390,13 +392,13 @@ function message_handler(msg, data, data2)
     }
     else if(msg == "MSG_DISK_EJECT")
     {
-        $("#drop_zone").html(`df${data} eject`);
+        $("#drop_zone").html(`file slot`);
         play_sound(audio_df_eject); 
     }
     else if(msg == "MSG_HDR_STEP")
     {
-        play_sound(audio_hd_step); 
-     //   console.log(`MSG_DRIVE_STEP ${data} ${data2}`);
+        play_sound(audio_hd_step);
+        //   console.log(`MSG_DRIVE_STEP ${data} ${data2}`);
         $("#drop_zone").html(`dh${data} ${data2}`);
     }
     else if(msg == "MSG_SNAPSHOT_RESTORED")
@@ -713,6 +715,9 @@ function pushFile(file) {
         file_slot_file_name = file.name;
         file_slot_file = new Uint8Array(this.result);
         configure_file_dialog();
+        //we have to null the file input otherwise when ejecting and inserting the same
+        //file again it would not trigger the onchange/onload event 
+        document.getElementById('filedialog').value=null;
     }
     fileReader.readAsArrayBuffer(file);
 }
@@ -1001,14 +1006,14 @@ function keydown(e) {
         }
     }
 
-    var c64code = translateKey2(e.code, e.key);
-    if(c64code !== undefined)
+    var key_code = translateKey2(e.code, e.key);
+    if(key_code !== undefined && key_code.raw_key[0] != undefined)
     {
-        if(c64code.modifier != null)
+        if(key_code.modifier != null)
         {
-            wasm_schedule_key(c64code.modifier[0], c64code.modifier[1], 1, 0);
+            wasm_schedule_key(key_code.modifier[0], key_code.modifier[1], 1, 0);
         }
-        wasm_schedule_key(c64code.raw_key[0], c64code.raw_key[1], 1, 0);
+        wasm_schedule_key(key_code.raw_key[0], key_code.raw_key[1], 1, 0);
     }
 }
 
@@ -1032,18 +1037,29 @@ function keyup(e) {
         var joystick_cmd = joystick_keyup_map[e.code];
         if(joystick_cmd !== undefined)
         {
-            emit_joystick_cmd((port1=='keys'?'1':'2')+joystick_cmd);
+            let port_id=port1=='keys'?'1':'2';
+            if( joystick_cmd=='RELEASE_FIRE'
+                ||
+                //only release axis on key_up if the last key_down for that axis was the same direction
+                //see issue #737
+                port_state[port_id+'x'] == joystick_keydown_map[e.code]
+                ||
+                port_state[port_id+'y'] == joystick_keydown_map[e.code]
+            )
+            {
+                emit_joystick_cmd(port_id+joystick_cmd);
+            }
             return;
         }
     }
 
-    var c64code = translateKey2(e.code, e.key);
-    if(c64code !== undefined )
+    var key_code = translateKey2(e.code, e.key);
+    if(key_code !== undefined && key_code.raw_key[0] != undefined)
     {
-        wasm_schedule_key(c64code.raw_key[0], c64code.raw_key[1], 0, 1);
-        if(c64code.modifier != null )
+        wasm_schedule_key(key_code.raw_key[0], key_code.raw_key[1], 0, 1);
+        if(key_code.modifier != null )
         {
-            wasm_schedule_key(c64code.modifier[0], c64code.modifier[1], 0, 1);
+            wasm_schedule_key(key_code.modifier[0], key_code.modifier[1], 0, 1);
         }
     }
 }
@@ -1241,17 +1257,35 @@ function handleGamePad(portnr, gamepad)
         emit_joystick_cmd(portnr+"RELEASE_Y");
     }
 
-
-    var bFirePressed=false;
-    for(var i=0; i<gamepad.buttons.length && i<12;i++)
+    let joystick_button_count=3;
+    if(joystick_button_count==1)
     {
-        if(gamepad.buttons[i].pressed)
+        var bFirePressed=false;
+        for(var i=0; i<gamepad.buttons.length && i<12;i++)
         {
-            bFirePressed=true;
+            if(gamepad.buttons[i].pressed)
+            {
+                bFirePressed=true;
+            }
         }
+        emit_joystick_cmd(portnr + (bFirePressed?"PRESS_FIRE":"RELEASE_FIRE"));
+    }
+    else if(joystick_button_count>1)
+    {
+        var bFirePressed=[false,false,false];
+
+        for(var i=0; i<gamepad.buttons.length && i<12;i++)
+        {
+            if(gamepad.buttons[i].pressed)
+            {
+                bFirePressed[i%joystick_button_count]=true;
+            }
+        }
+        emit_joystick_cmd(portnr + (bFirePressed[0]?"PRESS_FIRE":"RELEASE_FIRE"));
+        emit_joystick_cmd(portnr + (bFirePressed[1]?"PRESS_FIRE2":"RELEASE_FIRE2"));
+        emit_joystick_cmd(portnr + (bFirePressed[2]?"PRESS_FIRE3":"RELEASE_FIRE3"));
     }
 
-    emit_joystick_cmd(portnr + (bFirePressed?"PRESS_FIRE":"RELEASE_FIRE"));
 }
 
 var port_state={};
@@ -1296,6 +1330,22 @@ function emit_joystick_cmd(command)
     else if(cmd=="RELEASE_FIRE")
     {
         port_state[port+'fire']= cmd;
+    }
+    else if(cmd=="PRESS_FIRE2")
+    {
+        port_state[port+'fire2']= cmd;
+    }
+    else if(cmd=="RELEASE_FIRE2")
+    {
+        port_state[port+'fire2']= cmd;
+    }
+    else if(cmd=="PRESS_FIRE3")
+    {
+        port_state[port+'fire3']= cmd;
+    }
+    else if(cmd=="RELEASE_FIRE3")
+    {
+        port_state[port+'fire3']= cmd;
     }
 
     send_joystick(PORT_ACCESSOR.MANUAL, port, command);
@@ -1386,8 +1436,8 @@ function InitWrappers() {
                 queued_executes--;
             };
             do_animation_frame = function(now) {
-                let behind = Module._wasm_draw_one_frame(now);
                 draw_one_frame(); // to gather joystick information 
+                let behind = Module._wasm_draw_one_frame(now);
                 while(behind>queued_executes)
                 {
                     queued_executes++;
@@ -3934,14 +3984,14 @@ async function emit_string_autotype(keys_to_emit_array, type_first_key_time=0, r
     }
     for(the_key of keys_to_emit_array)
     {
-        var c64code = translateSymbol(the_key);
-        if(c64code !== undefined)
+        var key_code = translateSymbol(the_key);
+        if(key_code !== undefined)
         {
-            if(c64code.modifier != null)
+            if(key_code.modifier != null)
             {
-                wasm_auto_type(c64code.modifier[0], release_delay, delay);
+                wasm_auto_type(key_code.modifier[0], release_delay, delay);
             }
-            wasm_auto_type(c64code.raw_key[0], release_delay, delay);
+            wasm_auto_type(key_code.raw_key[0], release_delay, delay);
             delay+=release_delay;
         }
     }
@@ -3952,20 +4002,20 @@ async function emit_string(keys_to_emit_array, type_first_key_time=0, release_de
     if(type_first_key_time>0) await sleep(type_first_key_time);
     for(the_key of keys_to_emit_array)
     {
-        var c64code = translateSymbol(the_key);
-        if(c64code !== undefined)
+        var key_code = translateSymbol(the_key);
+        if(key_code !== undefined)
         {
-            if(c64code.modifier != null)
+            if(key_code.modifier != null)
             {
-                wasm_key(c64code.modifier[0], 1);
+                wasm_key(key_code.modifier[0], 1);
             }
-            wasm_key(c64code.raw_key[0], 1);    
+            wasm_key(key_code.raw_key[0], 1);    
             await sleep(release_delay_in_ms);     
-            if(c64code.modifier != null)
+            if(key_code.modifier != null)
             {
-                wasm_key(c64code.modifier[0], 0);
+                wasm_key(key_code.modifier[0], 0);
             }
-            wasm_key(c64code.raw_key[0],0);                
+            wasm_key(key_code.raw_key[0],0);                
         }
     }
 }
