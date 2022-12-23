@@ -401,9 +401,13 @@ function message_handler(msg, data, data2)
     }
     else if(msg == "MSG_DRIVE_STEP" || msg == "MSG_DRIVE_POLL")
     {
-        play_sound(audio_df_step);   
-        if(wasm_has_disk("df0")){
+        if(wasm_has_disk("df"+data)){
+            play_sound(audio_df_step);
             $("#drop_zone").html(`df${data} ${data2.toString().padStart(2, '0')}`);
+        }
+        else if (data==0)
+        {//only for df0: play stepper sound in case of no disk
+            play_sound(audio_df_step);
         }
     }
     else if(msg == "MSG_DISK_INSERT")
@@ -772,12 +776,7 @@ function configure_file_dialog(reset=false)
         else
         {
             $("#file_slot_dialog_label").html(" "+file_slot_file_name);
-            //configure file_slot
-
-            var auto_load = false;
-            var auto_press_play = false;
-            var auto_run = false;
-            
+            //configure file_slot  
             $("#button_insert_file").removeAttr("disabled");
             $("#div_zip_content").hide();
             $("#button_eject_zip").hide();
@@ -889,7 +888,7 @@ function configure_file_dialog(reset=false)
                                 {
                                     let drive_number= df_mount_list.indexOf(path);
                                     if(drive_number<0)
-                                        hd_mount_list.indexOf(path);
+                                        drive_number=hd_mount_list.indexOf(path);
                                     file_slot_file_name=path;
                                     file_slot_file = await zip.file(path).async("uint8array");
                                     insert_file(drive_number);
@@ -906,28 +905,53 @@ function configure_file_dialog(reset=false)
                 $("#button_insert_file").html("mount file"+return_icon);
                 $("#button_insert_file").attr("disabled", true);
             }
-
-            $("#auto_load").prop('checked', auto_load);
-            $("#auto_press_play").prop('checked', auto_press_play);
-            $("#auto_run").prop('checked', auto_run);    
-
-            if(file_slot_file_name.match(/[.](adf|hdf|dms|exe|vAmiga)$/i))
+            else if(file_slot_file_name.match(/[.](adf|hdf|dms|exe|vAmiga)$/i))
             {
-                insert_file();
+                prompt_for_drive();
             }
         }    
-
     } catch(e) {
         console.log(e);
     }
 }
 
+function prompt_for_drive()
+{
+    let cancel=`<div style="position:absolute;top:0;right:0;cursor:pointer" onclick="show_drive_select(false)"><svg style="width:1.8em;height:1.8em;color:gray"><use xlink:href="img/sprites.svg#x"></use></svg></div>`;
 
+    show_drive_select=(show)=>{
+        document.getElementById("div_drive_select").setAttribute('class', `slide-${show?"in":"out"}`);
+    }
 
+    if(file_slot_file_name.match(/[.](adf|dms|exe)$/i))
+    {
+        $("#div_drive_select").html(`${cancel}
+        <div id="drive_select_file">insert <span class="mx-2 px-2" style="border-radius:7px;background-color: var(--secondary);">${file_slot_file_name}</span> into</div>
+        <div id="drive_select_choice">
+            <button type="button" class="btn btn-primary m-1 mb-2" style="width:20vw" onclick="insert_file(0);show_drive_select(false);">df0:</button>
+            <button type="button" class="btn btn-primary m-1 mb-2" style="width:20vw" onclick="insert_file(1);show_drive_select(false);">df1:</button>
+        </div>`);
+        show_drive_select(true);
+    }
+    else if(file_slot_file_name.match(/[.]hdf$/i))
+    {
+        $("#div_drive_select").html(`${cancel}
+        <div id="drive_select_file">reset amiga and mount <span class="mx-2 px-2" style="border-radius:7px;background-color: var(--secondary);">${file_slot_file_name}</span> into</div>
+        <div id="drive_select_choice">
+            <button type="button" class="btn btn-primary m-1 mb-2" style="width:20vw" onclick="insert_file(0);show_drive_select(false);">dh0:</button>
+            <button type="button" class="btn btn-primary m-1 mb-2" style="width:20vw" onclick="insert_file(1);show_drive_select(false);">dh1:</button>
+            <button type="button" class="btn btn-primary m-1 mb-2" style="width:20vw" onclick="insert_file(0);show_drive_select(false);">dh2:</button>
+            <button type="button" class="btn btn-primary m-1 mb-2" style="width:20vw" onclick="insert_file(1);show_drive_select(false);">dh3:</button>
+        </div>`);
+        show_drive_select(true);
+    }
+    else
+    {
+        show_drive_select(false);
+        insert_file(0);
+    }
 
-
-
-
+}
 
 var port1 = 'none';
 var port2 = 'none';
@@ -2429,12 +2453,6 @@ $('.layer').change( function(event) {
     reset_before_load=false;
     insert_file = function(drive=0) 
     {   
-        if($('#div_zip_content').is(':visible'))
-        {
-            configure_file_dialog(reset_before_load);
-            return;
-        }
-        
         $('#modal_file_slot').modal('hide');
 
         var execute_load = async function(drive){
@@ -2479,7 +2497,7 @@ $('.layer').change( function(event) {
         else
         {
             setTimeout(async ()=> {
-                await execute_load();
+                await execute_load(drive);
                 wasm_reset();
                 if(call_param_warpto !=null){
                     wasm_configure("warp_to_frame", `${call_param_warpto}`);
@@ -2487,7 +2505,9 @@ $('.layer').change( function(event) {
             },0);
         }
     }
-    $("#button_insert_file").click(insert_file);
+    $("#button_insert_file").click(()=>{
+         prompt_for_drive();
+    });
     
     $('#modal_take_snapshot').on('hidden.bs.modal', function () {
         if(is_running())
