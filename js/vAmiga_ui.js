@@ -917,7 +917,7 @@ function configure_file_dialog(reset=false)
 
 function prompt_for_drive()
 {
-    let cancel=`<div style="position:absolute;top:0;right:0;cursor:pointer" onclick="show_drive_select(false)"><svg style="width:1.8em;height:1.8em;color:gray"><use xlink:href="img/sprites.svg#x"></use></svg></div>`;
+    let cancel=`<div class="close" style="position:absolute;top:0.2em;right:0.4em;cursor:pointer" onclick="show_drive_select(false)">×</div>`;
 
     show_drive_select=(show)=>{
         document.getElementById("div_drive_select").setAttribute('class', `slide-${show?"in":"out"}`);
