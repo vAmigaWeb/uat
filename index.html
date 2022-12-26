@@ -898,9 +898,25 @@ goes into edit mode which takes you right back to here ...
 
       //prevent backgroundscroll
       document.getElementById('div_body').addEventListener('touchmove',function(e){
-        console.log(e);
-        if(!e.target.classList.contains("modal-body"))
-        {//lets scroll on modals
+        let inside_modal=false;
+        for(let el of e.path)
+        {
+          if(el.classList !== undefined && 
+            (
+                el.classList.contains("modal-dialog")
+              ||el.classList.contains("modal-header")
+              ||el.classList.contains("modal-body")
+              ||el.classList.contains("modal-content")
+              ||el.classList.contains("modal-footer")
+            )
+          )
+          {
+            inside_modal=true;
+            break;
+          }
+        }
+        if(!inside_modal)
+        {//prevent scrolling except on modals
           e.preventDefault();
         }
       },false);
