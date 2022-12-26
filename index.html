@@ -68,8 +68,8 @@
       }
     </style>
   </head>
-  <body data-theme="dark" >
-<div id="div_body" style="width:100vw;height:100vh" oncontextmenu="event.preventDefault()">
+  <body data-theme="dark">
+  <div id="div_body" oncontextmenu="event.preventDefault()">
     <figure style="overflow:visible;" id="spinner"><div class="spinner"></div><center style="margin-top:0.5em"><img src="img/vAmigaIcon.png" style="width:5em; height:5em"/><strong>booting into vAmiga WebEdition...</strong></center></figure>
     <div class="emscripten" id="status">Downloading...</div>
     <div class="emscripten">
@@ -897,8 +897,13 @@ goes into edit mode which takes you right back to here ...
       }
 
       //prevent backgroundscroll
-      document.getElementById('div_canvas').addEventListener('touchmove',function(e){e.preventDefault()},false);
-      document.getElementById('div_body').addEventListener('touchmove',function(e){e.preventDefault()},false);
+      document.getElementById('div_body').addEventListener('touchmove',function(e){
+        console.log(e);
+        if(!e.target.classList.contains("modal-body"))
+        {//lets scroll on modals
+          e.preventDefault();
+        }
+      },false);
 
       var statusElement = document.getElementById('status');
       var progressElement = document.getElementById('progress');
@@ -1017,7 +1022,8 @@ goes into edit mode which takes you right back to here ...
       });
     </script>
     <script async type="text/javascript" src="vAmiga.js"></script>
-  </div></body>
+  </div><!--div_body-->
+  </body>
 </html>
 
 
