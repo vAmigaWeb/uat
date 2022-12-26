@@ -68,8 +68,7 @@
       }
     </style>
   </head>
-  <body data-theme="dark">
-  <div id="div_body" oncontextmenu="event.preventDefault()">
+  <body data-theme="dark" oncontextmenu="event.preventDefault()">
     <figure style="overflow:visible;" id="spinner"><div class="spinner"></div><center style="margin-top:0.5em"><img src="img/vAmigaIcon.png" style="width:5em; height:5em"/><strong>booting into vAmiga WebEdition...</strong></center></figure>
     <div class="emscripten" id="status">Downloading...</div>
     <div class="emscripten">
@@ -896,18 +895,22 @@ goes into edit mode which takes you right back to here ...
         $("body").removeAttr( "data-theme").css("background-color", "var(--lighterbg) !important");
       }
 
-      is_inside_modal=(e, this_element)=>{
+      is_inside_scrollable=(e)=>{
         let inside_modal=false;
         let el=e.target; 
         while(el != document.body)
         {
-          if(el.classList !== undefined && 
+          if(
+            el.id == 'virtual_keyboard'||
             (
-                el.classList.contains("modal-dialog")
-              ||el.classList.contains("modal-header")
-              ||el.classList.contains("modal-body")
-              ||el.classList.contains("modal-content")
-              ||el.classList.contains("modal-footer")
+              el.classList !== undefined && 
+              (
+                  el.classList.contains("modal-dialog")
+                ||el.classList.contains("modal-header")
+                ||el.classList.contains("modal-body")
+                ||el.classList.contains("modal-content")
+                ||el.classList.contains("modal-footer")
+              )
             )
           )
           {
@@ -921,7 +924,7 @@ goes into edit mode which takes you right back to here ...
 
       document.body.addEventListener('touchmove',function(e){
  //       if(e.target.id.startsWith("tooltip"))
-        if(!is_inside_modal(e,this))
+        if(!is_inside_scrollable(e))
         {//prevent scrolling except on modals
           e.preventDefault();
         }
@@ -1052,7 +1055,6 @@ goes into edit mode which takes you right back to here ...
       });
     </script>
     <script async type="text/javascript" src="vAmiga.js"></script>
-  </div><!--div_body-->
   </body>
 </html>
 
