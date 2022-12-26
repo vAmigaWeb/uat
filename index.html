@@ -899,7 +899,8 @@ goes into edit mode which takes you right back to here ...
       //prevent backgroundscroll
       document.getElementById('div_body').addEventListener('touchmove',function(e){
         let inside_modal=false;
-        for(let el of e.path)
+        let el=e.target; 
+        while(el.id != this.id)
         {
           if(el.classList !== undefined && 
             (
@@ -914,6 +915,7 @@ goes into edit mode which takes you right back to here ...
             inside_modal=true;
             break;
           }
+          el=el.parentNode;
         }
         if(!inside_modal)
         {//prevent scrolling except on modals
