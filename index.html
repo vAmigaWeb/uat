@@ -896,11 +896,10 @@ goes into edit mode which takes you right back to here ...
         $("body").removeAttr( "data-theme").css("background-color", "var(--lighterbg) !important");
       }
 
-      //prevent backgroundscroll
-      document.getElementById('div_body').addEventListener('touchmove',function(e){
+      is_inside_modal=(e, this_element)=>{
         let inside_modal=false;
         let el=e.target; 
-        while(el.id != this.id)
+        while(el != document.body)
         {
           if(el.classList !== undefined && 
             (
@@ -917,12 +916,25 @@ goes into edit mode which takes you right back to here ...
           }
           el=el.parentNode;
         }
-        if(!inside_modal)
+        return inside_modal;
+      }
+
+      document.body.addEventListener('touchmove',function(e){
+ //       if(e.target.id.startsWith("tooltip"))
+        if(!is_inside_modal(e,this))
+        {//prevent scrolling except on modals
+          e.preventDefault();
+        }
+      },{ capture:false ,passive: false });
+
+      //prevent backgroundscroll
+ /*     document.getElementById('div_body').addEventListener('touchmove',function(e){
+        if(!is_inside_modal(e))
         {//prevent scrolling except on modals
           e.preventDefault();
         }
       },false);
-
+*/
       var statusElement = document.getElementById('status');
       var progressElement = document.getElementById('progress');
       var spinnerElement = document.getElementById('spinner');
