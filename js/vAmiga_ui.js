@@ -16,6 +16,7 @@ let call_param_display=null;
 let call_param_wait_for_kickstart_injection=null;
 let call_param_kickstart_rom_url=null;
 
+let startup_script_executed=false;
 let df_mount_list=[];//to auto mount disks from zip e.g. ["Batman_Rises_disk1.adf","Batman_Rises_disk2.adf"];
 let hd_mount_list=[];
 
@@ -182,6 +183,15 @@ function get_parameter_link()
                 call_param_buttons.push( b );
             }
         }
+        if(call_obj.startup_script !== undefined && startup_script_executed==false)
+        {
+            try {
+                new Function(`${call_obj.startup_script}`)();
+                startup_script_executed=true;
+            } catch (error) {
+                console.error(`error in startup_script: ${call_obj.startup_script}`,e)
+            }
+        }
     }
     else
     {
@@ -282,7 +292,7 @@ function get_parameter_link()
 
 
 var parameter_link__already_checked=false;
-
+var parameter_link_mount_in_df0=false;
 function load_parameter_link()
 {
     if($('#modal_roms').is(":visible"))
@@ -297,9 +307,8 @@ function load_parameter_link()
     var parameter_link = get_parameter_link();
     if(parameter_link != null)
     {
-        //setTimeout(() => {
+        parameter_link_mount_in_df0=parameter_link.match(/[.](adf|hdf|dms|exe)$/i);
         get_data_collector("csdb").run_link("call_parameter", 0,parameter_link);            
-        //}, 10);
     }
 }
 
@@ -448,11 +457,11 @@ function message_handler(msg, data, data2)
         $(`#button_${"OPT_CHIP_RAM"}`).text(`chip ram=${wasm_get_config_item('CHIP_RAM')} KB (snapshot)`);
         $(`#button_${"OPT_SLOW_RAM"}`).text(`slow ram=${wasm_get_config_item('SLOW_RAM')} KB (snapshot)`);
         $(`#button_${"OPT_FAST_RAM"}`).text(`fast ram=${wasm_get_config_item('FAST_RAM')} KB (snapshot)`);
+    
+        rom_restored_from_snapshot=true;
     }
 
 }
-rs232_message = "";
-//rs232_message=[];
 
 async function fetchOpenROMS(){
     var installer = async function(suffix, response) {
@@ -894,11 +903,13 @@ function configure_file_dialog(reset=false)
                                     insert_file(drive_number);
                                 } 
                             }
-                            df_mount_list=[];//reset the direct call lists
+                            if(df_mount_list.length == 0 && hd_mount_list.length==0)
+                            {//when there is no auto mount list let the user decide
+                                $("#modal_file_slot").modal();
+                            }
+                            df_mount_list=[];//only do automount once
                             hd_mount_list=[];
                         })();
-
-                        $("#modal_file_slot").modal();
                     }
                 });
 
@@ -937,7 +948,7 @@ function prompt_for_drive()
         for(let i = 0; i<4;i++)
             df_count+=wasm_get_config_item("DRIVE_CONNECT",i);
 
-        if(df_count==1)
+        if(df_count==1 || parameter_link_mount_in_df0)
         {
             show_drive_select(false);
             insert_file(0);
@@ -1591,12 +1602,7 @@ function InitWrappers() {
             }
         }
         init_sound_buffer();
-/*        samples_consumed=0;
-        setInterval(() => {
-            console.log("ap_samples_req: "+samples_consumed/30);
-            samples_consumed=0;
-        }, 30*1000);
-*/      
+
         empty_shuttles=new RingBuffer(16);
         worklet_node.port.onmessage = (msg) => {
             //direct c function calls with preceeding Module._ are faster than cwrap
@@ -1642,19 +1648,41 @@ function InitWrappers() {
         worklet_node.connect(audioContext.destination);        
     }
 
-    click_unlock_WebAudio=async function() {
-        await connect_audio_processor();
-        if(audioContext.state === 'running') {
+
+    //when app is going to background
+    //window.addEventListener('blur', pause);
+
+    //when app is coming to foreground again, reconnect audio if it has been 'suspended' in the meantime
+    window.addEventListener('focus', async ()=>{ 
+        try { await connect_audio_processor(); } catch(e){ console.error(e);}
+    });
+    
+    audioContext.onstatechange = () => {
+        let state = audioContext.state;
+        console.error(`audioContext.state=${state}`);
+        if(state==='suspended'){
+            //in case we did go suspended reinstall the unlock events
             document.removeEventListener('click',click_unlock_WebAudio);
+            document.addEventListener('click',click_unlock_WebAudio, false);
+
+            //iOS safari does not bubble click events on canvas so we add this extra event handler here
+            let canvas=document.getElementById('canvas');
+            canvas.removeEventListener('touchstart',touch_unlock_WebAudio);
+            canvas.addEventListener('touchstart',touch_unlock_WebAudio,false);        
         }
-    }
-    touch_unlock_WebAudio=async function() {
-        await connect_audio_processor();
-        if(audioContext.state === 'running') {
+        else if(state === 'running') {
+            //if it runs we dont need the unlock handlers, has no effect when handler already removed 
+            document.removeEventListener('click',click_unlock_WebAudio);
             document.getElementById('canvas').removeEventListener('touchstart',touch_unlock_WebAudio);
         }
     }
 
+    click_unlock_WebAudio=async function() {
+        try { await connect_audio_processor(); } catch(e){ console.error(e);}
+    }
+    touch_unlock_WebAudio=async function() {
+        try { await connect_audio_processor(); } catch(e){ console.error(e);}
+    }    
     document.addEventListener('click',click_unlock_WebAudio, false);
 
     //iOS safari does not bubble click events on canvas so we add this extra event handler here
@@ -2763,7 +2791,7 @@ $('.layer').change( function(event) {
         {
             set_settings_cache_value('active_version', sw_version.cache_name);        
         }
-        try{window.location.reload();} catch(e){console.error(e)}
+        window.location.reload();
     }
     
     $("#div_toast").hide();
@@ -2809,7 +2837,7 @@ $('.layer').change( function(event) {
             manage already installed versions:
             <br>
             <div style="display:flex">
-            <select id="version_selector" class="ml-2" style="background-color:var(--darkbg);color:var(--light);border-radius:6px;border-width:2px;border-color:var(--light);">`;
+            <select id="version_selector" class="ml-2">`;
             for(c_name of cache_names)
             {
                 let name_parts=c_name.split('@');
@@ -2934,7 +2962,7 @@ $('.layer').change( function(event) {
             document.getElementById('activate_version').onclick = function() {
                 let cache_name = document.getElementById('version_selector').value; 
                 set_settings_cache_value("active_version",cache_name);
-                try{window.location.reload();} catch(e){console.error(e)}
+                window.location.reload();
             }
             let activate_or_install_btn = document.getElementById('activate_or_install');
             if(activate_or_install_btn != null)
@@ -2945,7 +2973,7 @@ $('.layer').change( function(event) {
                         if(new_version_already_installed)
                         {
                             set_settings_cache_value("active_version",sw_version.cache_name);
-                            try{window.location.reload();} catch(e){console.error(e)}
+                            window.location.reload();
                         }
                         else
                         {
@@ -3117,19 +3145,30 @@ $('.layer').change( function(event) {
 
 
 //---- rom dialog start
+    rom_restored_from_snapshot=false;
     fill_available_roms=async function (rom_type, select_id){
         let stored_roms=await list_rom_type_entries(rom_type);
         let html_rom_list=`<option value="empty">empty</option>`;
+        if(rom_restored_from_snapshot)
+        {
+            html_rom_list+=`<option value="restored_from_snapshot" hidden selected>restored from snapshot</option>`
+        }
         let selected_rom=local_storage_get(rom_type);
         for(rom of stored_roms)
         {
-            html_rom_list+= `<option value="${rom.id}" ${selected_rom ==rom.id?"selected":""}>${rom.id}</option>`;
+            html_rom_list+= `<option value="${rom.id}"`;
+            if(!rom_restored_from_snapshot)
+            {
+                html_rom_list+=`${selected_rom ==rom.id?"selected":""}`;
+            }
+            html_rom_list+= `>${rom.id}</option>`;
         }
         $(`#${select_id}`).html(html_rom_list);
 
         document.getElementById(select_id).onchange = function() {
             let selected_rom = document.getElementById(select_id).value; 
             save_setting(rom_type, selected_rom);
+            rom_restored_from_snapshot=false;
             load_roms(true);
         }
     }
