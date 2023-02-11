@@ -15,13 +15,16 @@ function create2d_context()
     const canvas = document.getElementById('canvas');
     ctx = canvas.getContext('2d');
     image_data=ctx.createImageData(HPIXELS,VPIXELS);
+    pixel_buffer=new Uint8Array(0);
 }
 
 function render_canvas()
 {
-    let pixels = Module._wasm_pixel_buffer();
-    pixel_buffer=new Uint8Array(Module.HEAPU32.buffer, pixels, HPIXELS*VPIXELS*4);
-
+    if(pixel_buffer.byteLength==0)
+    {
+        let pixels = Module._wasm_pixel_buffer();
+        pixel_buffer=new Uint8Array(Module.HEAPU32.buffer, pixels, HPIXELS*VPIXELS<<2);
+    }
     image_data.data.set(pixel_buffer, 0);
 
 /* SDL2 Rendering
