@@ -311,7 +311,7 @@ function updateTexture() {
 
     // Update the GPU texture
     if (currLOF) {
-        if(currLOF_tex.byteLength===0 || currLOF_tex.byteOffset === currSHF_tex.byteOffset)
+        //if(currLOF_tex.byteLength===0 || currLOF_tex.byteOffset === currSHF_tex.byteOffset)
         {
             let frame_data = Module._wasm_pixel_buffer();
             currLOF_tex=new Uint8Array(Module.HEAPU8.buffer, frame_data, w*h*4);
@@ -320,7 +320,7 @@ function updateTexture() {
         gl.bindTexture(gl.TEXTURE_2D, lfTexture);
         gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, currLOF_tex);
     } else {
-        if(currSHF_tex.byteLength===0 || currLOF_tex.byteOffset === currSHF_tex.byteOffset)
+        //if(currSHF_tex.byteLength===0 || currLOF_tex.byteOffset === currSHF_tex.byteOffset)
         {
             let frame_data = Module._wasm_pixel_buffer();
             currSHF_tex=new Uint8Array(Module.HEAPU8.buffer, frame_data, w*h*4);
