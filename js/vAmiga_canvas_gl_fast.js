@@ -1,7 +1,7 @@
 let flicker_weight=1.0; // set 0.5 or 0.6 for interlace flickering
 function render_canvas_gl(now)
 {
-    updateTexture(now);
+    updateSubTexture(now);
     render();
 }
 
@@ -299,7 +299,7 @@ function updateTexture() {
 
 
 
-function updateTextureSub() {
+function updateSubTexture2() {
     const w = HPIXELS;
 //    const h = VPIXELS;
 
@@ -333,8 +333,48 @@ function updateTextureSub() {
         gl.activeTexture(gl.TEXTURE1);
         gl.bindTexture(gl.TEXTURE_2D, sfTexture);
     }
-//    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, tex);
+
+    //    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, tex);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, /*yoff*/VPIXELS-yOff-clipped_height, w, clipped_height, gl.RGBA, gl.UNSIGNED_BYTE, Module.HEAPU8,frame_data );
+}
+
+
+function updateSubTexture() {
+    let frame_info=Module._wasm_frame_info();
+    currLOF=frame_info & 1;
+    frame_info = frame_info>>>1; 
+    prevLOF=frame_info & 1;
+    frame_frameNr = frame_info>>>1; 
+    
+    // Check for duplicate frames or frame drops
+    if (frame_frameNr != frameNr + 1) {
+        // console.log('Frame sync mismatch: ' + frameNr + ' -> ' + frame.frameNr);
+
+        // Return immediately if we already have this texture
+        if (frame_frameNr === frameNr) return;
+    }
+
+    frameNr = frame_frameNr;
+
+//  let frame_data = Module._wasm_pixel_buffer();
+//  let tex=new Uint8Array(Module.HEAPU8.buffer, frame_data, w*h<<2);
+
+    let frame_data = Module._wasm_pixel_buffer()+ yOff*(HPIXELS<<2);
+    //let tex=new Uint8Array(Module.HEAPU8.buffer, frame_data, w*clipped_height<<2);
+
+    // Update the GPU texture
+    if (currLOF) {
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, lfTexture);
+    } else {
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, sfTexture);
+    }
+
+    gl.pixelStorei(gl.UNPACK_ROW_LENGTH, HPIXELS);
+    gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, xOff);
+
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, xOff, VPIXELS-yOff-clipped_height, clipped_width, clipped_height, gl.RGBA, gl.UNSIGNED_BYTE, Module.HEAPU8,frame_data );
 }
 
 function render() {
