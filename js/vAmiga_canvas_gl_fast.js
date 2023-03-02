@@ -179,7 +179,8 @@ function initWebGL() {
     setAttribute(mergeShaderProgram, 'aTextureCoord');
 
     // Flip y axis to get the image right
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+ //   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
 
     // Create textures
     lfTexture = createTexture(HPIXELS, VPIXELS);
@@ -189,8 +190,8 @@ function initWebGL() {
 
 function updateTextureRect(x1, y1, x2, y2) {
     // console.log("updateTextureRect(" + x1 + ", " + y1 + " ," + x2 + ", " + y2 + ")");
-    const array = new Float32Array([x1, 1.0-y1, x2, 1.0-y1, x1, 1.0-y2, x2, 1.0-y2]);
-    //const array = new Float32Array([x1, y1, x2, y1, x1, y2, x2, y2]);
+    //const array = new Float32Array([x1, 1.0-y1, x2, 1.0-y1, x1, 1.0-y2, x2, 1.0-y2]);
+    const array = new Float32Array([x1, y1, x2, y1, x1, y2, x2, y2]);
     console.log(array);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, tBuffer);
@@ -374,7 +375,7 @@ function updateSubTexture() {
     gl.pixelStorei(gl.UNPACK_ROW_LENGTH, HPIXELS);
     gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, xOff);
 
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, xOff, VPIXELS-yOff-clipped_height, clipped_width, clipped_height, gl.RGBA, gl.UNSIGNED_BYTE, Module.HEAPU8,frame_data );
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, xOff, yOff, clipped_width, clipped_height, gl.RGBA, gl.UNSIGNED_BYTE, Module.HEAPU8, frame_data);
 }
 
 function render() {
