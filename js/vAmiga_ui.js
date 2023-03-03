@@ -1527,6 +1527,8 @@ function InitWrappers() {
                 {
                     draw_one_frame(); // to gather joystick information 
                     let behind = Module._wasm_draw_one_frame(now);
+                    if(behind<0)
+                        return;
                     render_frame(now);
                     while(behind>queued_executes)
                     {
