@@ -1,12 +1,7 @@
 let flicker_weight=1.0; // set 0.5 or 0.6 for interlace flickering
 function render_canvas_gl(now)
 {
- //   if(
-        updateSubTexture(now)
- //   )
-   // {
-        render();
-   // }
+    if(updateSubTexture(now)) render();
 }
 
 // Reference to the canvas element
@@ -185,7 +180,7 @@ function initWebGL() {
     // Flip y axis to get the image right
  //   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
  
- //   gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
 
     // Create textures
     lfTexture = createTexture(HPIXELS, VPIXELS);
