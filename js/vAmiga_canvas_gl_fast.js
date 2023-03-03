@@ -1,8 +1,10 @@
 let flicker_weight=1.0; // set 0.5 or 0.6 for interlace flickering
 function render_canvas_gl(now)
 {
-    updateSubTexture(now);
-    render();
+    if(updateSubTexture(now))
+    {
+        render();
+    }
 }
 
 // Reference to the canvas element
@@ -353,7 +355,7 @@ function updateSubTexture() {
         // console.log('Frame sync mismatch: ' + frameNr + ' -> ' + frame.frameNr);
 
         // Return immediately if we already have this texture
-        if (frame_frameNr === frameNr) return;
+        if (frame_frameNr === frameNr) return false;
     }
 
     frameNr = frame_frameNr;
@@ -377,6 +379,7 @@ function updateSubTexture() {
     gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, xOff);
 
     gl.texSubImage2D(gl.TEXTURE_2D, 0, xOff, yOff, clipped_width, clipped_height, gl.RGBA, gl.UNSIGNED_BYTE, Module.HEAPU8, frame_data);
+    return true;
 }
 
 function render() {
