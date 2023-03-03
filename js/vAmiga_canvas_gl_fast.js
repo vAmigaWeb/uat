@@ -1,10 +1,12 @@
 let flicker_weight=1.0; // set 0.5 or 0.6 for interlace flickering
 function render_canvas_gl(now)
 {
-    if(updateSubTexture(now))
-    {
+ //   if(
+        updateSubTexture(now)
+ //   )
+   // {
         render();
-    }
+   // }
 }
 
 // Reference to the canvas element
