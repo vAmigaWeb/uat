@@ -180,7 +180,8 @@ function initWebGL() {
 
     // Flip y axis to get the image right
  //   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+ 
+ //   gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
 
     // Create textures
     lfTexture = createTexture(HPIXELS, VPIXELS);
