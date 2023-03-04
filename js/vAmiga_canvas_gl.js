@@ -275,7 +275,7 @@ function updateTexture() {
 
     frameNr = frame_frameNr;
 
-    let frame_data = Module._wasm_pixel_buffer()+ yOff*(HPIXELS<<2);
+    let frame_data = Module._wasm_pixel_buffer();
     // Update the GPU texture
     if (currLOF) {
         gl.activeTexture(gl.TEXTURE0);
@@ -284,13 +284,7 @@ function updateTexture() {
         gl.activeTexture(gl.TEXTURE1);
         gl.bindTexture(gl.TEXTURE_2D, sfTexture);
     }
- //   gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, Module.HEAPU8, frame_data);
-
- gl.pixelStorei(gl.UNPACK_ROW_LENGTH, HPIXELS);
- gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, xOff);
-
- gl.texSubImage2D(gl.TEXTURE_2D, 0, xOff, yOff, clipped_width, clipped_height, gl.RGBA, gl.UNSIGNED_BYTE, Module.HEAPU8, frame_data);
-
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, Module.HEAPU8, frame_data);
  return true;
 }
 
