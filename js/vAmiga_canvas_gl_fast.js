@@ -1,4 +1,3 @@
-let flip_it=false; //iPad Pro ProRes Display only renders 50fps when true 
 let flicker_weight=1.0; // set 0.5 or 0.6 for interlace flickering
 function render_canvas_gl(now)
 {
@@ -178,10 +177,6 @@ function initWebGL() {
     setAttribute(mainShaderProgram, 'aTextureCoord');
     setAttribute(mergeShaderProgram, 'aTextureCoord');
 
-    // Flip y axis to get the image right
-    if(flip_it) gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-//    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-
     // Create textures
     lfTexture = createTexture(HPIXELS, VPIXELS);
     sfTexture = createTexture(HPIXELS, VPIXELS);
@@ -190,9 +185,7 @@ function initWebGL() {
 
 function updateTextureRect(x1, y1, x2, y2) {
     // console.log("updateTextureRect(" + x1 + ", " + y1 + " ," + x2 + ", " + y2 + ")");
-    const array = flip_it ? 
-        new Float32Array([x1, 1.0-y1, x2, 1.0-y1, x1, 1.0-y2, x2, 1.0-y2])
-        :new Float32Array([x1, y1, x2, y1, x1, y2, x2, y2]);
+    const array = new Float32Array([x1, y1, x2, y1, x1, y2, x2, y2]);
     //console.log(array);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, tBuffer);
@@ -362,7 +355,7 @@ function updateSubTexture() {
 //  let tex=new Uint8Array(Module.HEAPU8.buffer, frame_data, w*h<<2);
 
     let frame_data = Module._wasm_pixel_buffer()+ yOff*(HPIXELS<<2);
-    //let tex=new Uint8Array(Module.HEAPU8.buffer, frame_data, w*clipped_height<<2);
+    let tex=new Uint8Array(Module.HEAPU8.buffer, frame_data, w*clipped_height<<2);
 
     // Update the GPU texture
     if (currLOF) {
@@ -376,7 +369,7 @@ function updateSubTexture() {
     gl.pixelStorei(gl.UNPACK_ROW_LENGTH, HPIXELS);
     gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, xOff);
 
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, xOff, flip_it?VPIXELS-yOff-clipped_height:yOff, clipped_width, clipped_height, gl.RGBA, gl.UNSIGNED_BYTE, Module.HEAPU8, frame_data);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, xOff, yOff, clipped_width, clipped_height, gl.RGBA, gl.UNSIGNED_BYTE, tex);
     return true;
 }
 
