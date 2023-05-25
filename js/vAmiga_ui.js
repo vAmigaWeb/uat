@@ -331,6 +331,20 @@ function wait_on_message(msg)
     return new Promise(resolve => fire_on_message(msg, resolve));
 }
 
+window.serial_port_out_buffer="";
+function set_serial_port_out_handler(new_handler){
+	window.serial_port_out_handler = new_handler;  
+}
+set_serial_port_out_handler((data) => {
+    //clear buffer when nobody consumes after 4kb of incoming data
+    if(window.serial_port_out_buffer.length>4096)
+    {
+        window.serial_port_out_buffer="";
+    }
+    window.serial_port_out_buffer += String.fromCharCode( data & 0xff );
+    //if we are embedded in a player send serial data to the host page
+    window.parent.postMessage({ msg: 'serial_port_out', value: data},"*");
+});
 function message_handler(msg, data, data2)
 {
     //console.log(`js receives msg:${msg} data:${data}`);
@@ -459,7 +473,12 @@ function message_handler(msg, data, data2)
         $(`#button_${"OPT_FAST_RAM"}`).text(`fast ram=${wasm_get_config_item('FAST_RAM')} KB (snapshot)`);
     
         rom_restored_from_snapshot=true;
+    } 
+    else if(msg == "MSG_SER_OUT")
+    {
+      serial_port_out_handler(data);
     }
+
 
 }
 
@@ -974,8 +993,8 @@ function prompt_for_drive()
         <div id="drive_select_choice">
             <button type="button" class="btn btn-primary m-1 mb-2" style="width:20vw" onclick="insert_file(0);show_drive_select(false);">dh0:</button>
             <button type="button" class="btn btn-primary m-1 mb-2" style="width:20vw" onclick="insert_file(1);show_drive_select(false);">dh1:</button>
-            <button type="button" class="btn btn-primary m-1 mb-2" style="width:20vw" onclick="insert_file(0);show_drive_select(false);">dh2:</button>
-            <button type="button" class="btn btn-primary m-1 mb-2" style="width:20vw" onclick="insert_file(1);show_drive_select(false);">dh3:</button>
+            <button type="button" class="btn btn-primary m-1 mb-2" style="width:20vw" onclick="insert_file(2);show_drive_select(false);">dh2:</button>
+            <button type="button" class="btn btn-primary m-1 mb-2" style="width:20vw" onclick="insert_file(3);show_drive_select(false);">dh3:</button>
         </div>`);
         show_drive_select(true);
     }
@@ -1482,7 +1501,15 @@ function InitWrappers() {
         Module._free(file_slot_wasmbuf);
         return retVal;                    
     }
-    
+    wasm_write_bytes_to_ser = function (bytes_to_send) {
+        for(let b of bytes_to_send)
+        {
+            Module._wasm_write_byte_to_ser(b);
+        }
+    }
+    wasm_write_byte_to_ser = function (byte_to_send) {
+            Module._wasm_write_byte_to_ser(byte_to_send);
+    }
     wasm_key = Module.cwrap('wasm_key', 'undefined', ['number', 'number']);
     wasm_toggleFullscreen = Module.cwrap('wasm_toggleFullscreen', 'undefined');
     wasm_joystick = Module.cwrap('wasm_joystick', 'undefined', ['string']);
@@ -1514,11 +1541,17 @@ function InitWrappers() {
                     render_canvas(now);
             }
             if(Module._wasm_is_worker_built()){
+                rendered_frame_id=0;
                 calculate_and_render=(now)=>
                 {
                     draw_one_frame(); // to gather joystick information 
-                    render_frame(now);
-                    Module._wasm_worker_run();
+                    Module._wasm_worker_run();                    
+                    let current_rendered_frame_id=Module._wasm_frame_info();
+                    if(rendered_frame_id !== current_rendered_frame_id)
+                    {
+                        render_frame(now);
+                        rendered_frame_id = current_rendered_frame_id;
+                    }
                 }
             }
             else
@@ -1593,9 +1626,7 @@ function InitWrappers() {
     wasm_get_config_item = Module.cwrap('wasm_get_config_item', 'number', ['string']);
     wasm_get_core_version = Module.cwrap('wasm_get_core_version', 'string');
 
-
-
-    connect_audio_processor = async () => {
+    connect_audio_processor_standard = async () => {
         if(audioContext.state !== 'running') {
             await audioContext.resume();  
         }
@@ -1676,15 +1707,58 @@ function InitWrappers() {
         worklet_node.connect(audioContext.destination);        
     }
 
+    connect_audio_processor_shared_memory= async ()=>{
+        if(audioContext.state !== 'running') {
+            await audioContext.resume();  
+        }
+        if(audio_connected==true)
+            return; 
+        if(audioContext.state === 'suspended') {
+            return;  
+        }
+        audio_connected=true;
+
+        audioContext.onstatechange = () => console.log('Audio Context: state = ' + audioContext.state);
+        let gainNode = audioContext.createGain();
+        gainNode.gain.value = 0.15;
+        gainNode.connect(audioContext.destination);
+        wasm_set_sample_rate(audioContext.sampleRate);
+        await audioContext.audioWorklet.addModule('js/vAmiga_audioprocessor_sharedarraybuffer.js');
+        const audioNode = new AudioWorkletNode(audioContext, 'vAmiga_audioprocessor_sharedarraybuffer', {
+            outputChannelCount: [2],
+            processorOptions: {
+                pointers: [Module._wasm_leftChannelBuffer(), Module._wasm_rightChannelBuffer()],
+                buffer: Module.HEAPF32.buffer,
+                length: 2048
+            }
+        });
+        audioNode.port.onmessage = (e) => {
+            Module._wasm_update_audio(e.data);
+        };
+        audioNode.connect(audioContext.destination);
+        if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+        }
+    }
+
+    if(Module._wasm_is_worker_built())
+    {
+        connect_audio_processor=connect_audio_processor_shared_memory;
+    }
+    else
+    {
+        connect_audio_processor=connect_audio_processor_standard;
+    }
 
     //when app becomes hidden/visible
     window.addEventListener("visibilitychange", async () => {
         if(document.visibilityState == "hidden") {
            try { audioContext.suspend(); } catch(e){ console.error(e);}
         }
-        else
+        else if(emulator_currently_runs)
         {
             try { await connect_audio_processor(); } catch(e){ console.error(e);}
+            add_unlock_user_action();
         }
     });
 
@@ -1692,41 +1766,58 @@ function InitWrappers() {
 //    window.addEventListener('blur', ()=>{});
 
     //when app is coming to foreground again
-    window.addEventListener('focus', async ()=>{         
-        try { await connect_audio_processor(); } catch(e){ console.error(e);}
+    window.addEventListener('focus', async ()=>{
+        if(emulator_currently_runs)
+        {
+            try { await connect_audio_processor(); } catch(e){ console.error(e);}
+            add_unlock_user_action();
+        }
     });
-    
+
+    add_unlock_user_action = function(){
+        //in case we did go suspended reinstall the unlock events
+        document.removeEventListener('click',click_unlock_WebAudio);
+        document.addEventListener('click',click_unlock_WebAudio, false);
+
+        //iOS safari does not bubble click events on canvas so we add this extra event handler here
+        let canvas=document.getElementById('canvas');
+        canvas.removeEventListener('touchstart',touch_unlock_WebAudio);
+        canvas.addEventListener('touchstart',touch_unlock_WebAudio,false);        
+    }
+    remove_unlock_user_action = function(){
+        //if it runs we dont need the unlock handlers, has no effect when handler already removed 
+        document.removeEventListener('click',click_unlock_WebAudio);
+        document.getElementById('canvas').removeEventListener('touchstart',touch_unlock_WebAudio);
+    }
+
     audioContext.onstatechange = () => {
         let state = audioContext.state;
         console.error(`audioContext.state=${state}`);
         if(state!=='running'){
-            //in case we did go suspended reinstall the unlock events
-            document.removeEventListener('click',click_unlock_WebAudio);
-            document.addEventListener('click',click_unlock_WebAudio, false);
-
-            //iOS safari does not bubble click events on canvas so we add this extra event handler here
-            let canvas=document.getElementById('canvas');
-            canvas.removeEventListener('touchstart',touch_unlock_WebAudio);
-            canvas.addEventListener('touchstart',touch_unlock_WebAudio,false);        
+            add_unlock_user_action();
         }
         else {
-            //if it runs we dont need the unlock handlers, has no effect when handler already removed 
-            document.removeEventListener('click',click_unlock_WebAudio);
-            document.getElementById('canvas').removeEventListener('touchstart',touch_unlock_WebAudio);
+            remove_unlock_user_action();
         }
     }
 
     click_unlock_WebAudio=async function() {
-        try { await connect_audio_processor(); } catch(e){ console.error(e);}
+        try { 
+            await connect_audio_processor(); 
+            if(audioContext.state=="running")
+                remove_unlock_user_action();
+        } catch(e){ console.error(e);}
     }
     touch_unlock_WebAudio=async function() {
-        try { await connect_audio_processor(); } catch(e){ console.error(e);}
+        try { 
+            await connect_audio_processor(); 
+            if(audioContext.state=="running")
+                remove_unlock_user_action();
+        } catch(e){ console.error(e);}
     }    
-    document.addEventListener('click',click_unlock_WebAudio, false);
 
-    //iOS safari does not bubble click events on canvas so we add this extra event handler here
-    document.getElementById('canvas').addEventListener('touchstart',touch_unlock_WebAudio,false);
-
+    add_unlock_user_action();
+    
     get_audio_context=function() {
         if (typeof Module === 'undefined'
         || typeof Module.SDL2 == 'undefined'
@@ -1833,7 +1924,22 @@ function InitWrappers() {
                 configure_file_dialog(reset=false);
             }
         }
-    }); 
+        else if(event.data.cmd == "ser:")
+        {
+            if(event.data.text !== undefined)
+            {
+                wasm_write_string_to_ser(event.data.text);
+            }
+            else if (event.data.byte !== undefined )
+            {
+                Module._wasm_write_byte_to_ser(event.data.byte);
+            }
+            else if (event.data.bytes !== undefined )
+            {
+                wasm_write_bytes_to_ser(event.data.bytes);
+            }
+        }
+    });
     
     dark_switch = document.getElementById('dark_switch');
 
@@ -1863,7 +1969,20 @@ function InitWrappers() {
 
     has_pointer_lock=false;
     try_to_lock_pointer=0;
+    has_pointer_lock_fallback=false;
+    window.last_mouse_x=0;
+    window.last_mouse_y=0;
+
     request_pointerlock = async function() {
+        if(canvas.requestPointerLock === undefined)
+        {
+            if(!has_pointer_lock_fallback)
+            {
+                add_pointer_lock_fallback();      
+                has_pointer_lock_fallback=true;
+            }
+            return;
+        }
         if(!has_pointer_lock && try_to_lock_pointer <20)
         {
             try_to_lock_pointer++;
@@ -1877,6 +1996,18 @@ function InitWrappers() {
         }
     };
     
+    window.add_pointer_lock_fallback=()=>{
+        document.addEventListener("mousemove", updatePosition_fallback, false); 
+        document.addEventListener("mousedown", mouseDown, false);
+        document.addEventListener("mouseup", mouseUp, false);
+    };
+    window.remove_pointer_lock_fallback=()=>{
+        document.removeEventListener("mousemove", updatePosition_fallback, false); 
+        document.removeEventListener("mousedown", mouseDown, false);
+        document.removeEventListener("mouseup", mouseUp, false);
+        has_pointer_lock_fallback=false;
+    };
+
     // Hook pointer lock state change events for different browsers
     document.addEventListener('pointerlockchange', lockChangeAlert, false);
     document.addEventListener('mozpointerlockchange', lockChangeAlert, false);
@@ -1902,6 +2033,24 @@ function InitWrappers() {
     var mouse_port=1;
     function updatePosition(e) {
         Module._wasm_mouse(mouse_port,e.movementX,e.movementY);
+    }
+    function updatePosition_fallback(e) {
+        let movementX=e.screenX-window.last_mouse_x;
+        let movementY=e.screenY-window.last_mouse_y;
+        window.last_mouse_x=e.screenX;
+        window.last_mouse_y=e.screenY;
+        let border_speed=4;
+        let border_pixel=2;
+    
+        if(e.screenX<=border_pixel)
+          movementX=-border_speed;
+        if(e.screenX>=window.innerWidth-border_pixel)
+          movementX=border_speed;
+        if(e.screenY<=border_pixel)
+          movementY=-border_speed;
+        if(e.screenY>=window.innerHeight-border_pixel)
+          movementY=border_speed;        
+        Module._wasm_mouse(mouse_port,movementX,movementY);  
     }
     function mouseDown(e) {
         Module._wasm_mouse_button(mouse_port,e.which, 1/* down */);
@@ -2502,14 +2651,7 @@ $('.layer').change( function(event) {
         }
         $("#output_row").hide();
     });
-    
-    /*document.getElementById('button_fullscreen').onclick = function() {
-        if (wasm_toggleFullscreen != null) {
-            wasm_toggleFullscreen();
-        }
-        document.getElementById('canvas').focus();
-    }
-    */
+
     document.getElementById('button_reset').onclick = function() {
         wasm_reset();
 
@@ -2528,6 +2670,7 @@ $('.layer').change( function(event) {
         if(running)
         {        
             wasm_halt();
+            try { audioContext.suspend(); } catch(e){ console.error(e);}
             running = false;
             //set run icon
             $('#button_run').html(`<svg class="bi bi-play-fill" width="1.6em" height="1.6em" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -2544,9 +2687,9 @@ $('.layer').change( function(event) {
             //have to catch an intentional "unwind" exception here, which is thrown
             //by emscripten_set_main_loop() after emscripten_cancel_main_loop();
             //to simulate infinity gamelloop see emscripten API for more info ... 
-            try{wasm_run();} catch(e) {}
+            try{wasm_run();} catch(e) {}        
+            try {connect_audio_processor();} catch(e){ console.error(e);}
             running = true;
-
         }
         
         //document.getElementById('canvas').focus();
@@ -3094,6 +3237,7 @@ $('.layer').change( function(event) {
         else if(port2 != 'mouse')
         {
             canvas.removeEventListener('click', request_pointerlock);
+            remove_pointer_lock_fallback();
         }
         if(port1.startsWith('mouse touch'))
         {
@@ -3109,6 +3253,7 @@ $('.layer').change( function(event) {
             canvas.removeEventListener('touchmove',emulate_mouse_touchpad_move, false);
             canvas.removeEventListener('touchend',emulate_mouse_touchpad_end, false);
         }
+        this.blur();
     }
     document.getElementById('port2').onchange = function() {
         port2 = document.getElementById('port2').value;
@@ -3138,6 +3283,7 @@ $('.layer').change( function(event) {
         else if(port1 != 'mouse')
         {
             canvas.removeEventListener('click', request_pointerlock);
+            remove_pointer_lock_fallback();
         }
         if(port2.startsWith('mouse touch'))
         {
@@ -3153,7 +3299,7 @@ $('.layer').change( function(event) {
             canvas.removeEventListener('touchmove',emulate_mouse_touchpad_move, false);
             canvas.removeEventListener('touchend',emulate_mouse_touchpad_end, false);
         }
-
+        this.blur();
     }
 
 
