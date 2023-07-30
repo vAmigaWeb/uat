@@ -478,8 +478,6 @@ function message_handler(msg, data, data2)
     {
       serial_port_out_handler(data);
     }
-
-
 }
 
 async function fetchOpenROMS(){
@@ -728,7 +726,7 @@ async function drop_handler(ev) {
                 }
                 else
                 {
-                    alert("Sorry only C64-Files, CSDb-release-links or CSDb-download-links are currently supported by vc64web ...");
+                    alert("Sorry only amiga disk files are currently supported by vAmigaWeb ...");
                 }
                 break;
             }
@@ -1760,6 +1758,14 @@ function InitWrappers() {
             try { await connect_audio_processor(); } catch(e){ console.error(e);}
             add_unlock_user_action();
         }
+        if(document.visibilityState === "visible" && wakeLock !== null)
+        {
+            if(is_running())
+            {
+//                alert("req wakelock again "+document.visibilityState);
+                set_wake_lock(true);
+            }
+        }
     });
 
     //when app is going to background either visible or hidden
@@ -2580,6 +2586,89 @@ wide_screen_switch.change( function() {
     save_setting('widescreen', this.checked);
     scaleVMCanvas();
 });
+//------
+  // create a reference for the wake lock
+  wakeLock = null;
+
+
+check_wake_lock = async () => {
+    if(is_running())
+    {
+        if(wakeLock != null)
+        {
+//            alert("req");
+            requestWakeLock();
+        }
+    }
+    else
+    {
+        if(wakeLock != null)
+        {
+//            alert("release");
+            wakeLock.release();
+        }
+    }
+}
+
+// create an async function to request a wake lock
+requestWakeLock = async () => {
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+
+      // change up our interface to reflect wake lock active
+      $("#wake_lock_status").text("(wake lock active, app will stay awake, no auto off)");
+      wake_lock_switch.prop('checked', true);
+
+      // listen for our release event
+      wakeLock.onrelease = function(ev) {
+        console.log(ev);
+      }
+      wakeLock.addEventListener('release', () => {
+        // if wake lock is released alter the button accordingly
+        if(wakeLock==null)
+            $("#wake_lock_status").text(`(no wake lock, system will probably auto off and sleep after a while)`);
+        else
+            $("#wake_lock_status").text(`(wake lock released while pausing, system will probably auto off and sleep after a while)`);
+        wake_lock_switch.prop('checked', false);
+
+      });
+    } catch (err) {
+      // if wake lock request fails - usually system related, such as battery
+      $("#wake_lock_status").text("(no wake lock, system will probably auto off and sleep after a while)");
+      wake_lock_switch.prop('checked', false);
+      console.error(err);
+      alert(`error while requesting wakelock: ${err.name}, ${err.message}`);
+    }
+}
+
+set_wake_lock = (use_wake_lock)=>{
+    let is_supported=false;
+    if ('wakeLock' in navigator) {
+        is_supported = true;
+    } else {
+        wake_lock_switch.prop('disabled', true);
+        $("#wake_lock_status").text("(wake lock is not supported on this browser, your system will decide when it turns your device off)");
+    }
+    if(is_supported && use_wake_lock)
+    {
+        requestWakeLock();
+    }
+    else if(wakeLock != null)
+    {
+        let current_wakelock=wakeLock;
+        wakeLock = null;
+        current_wakelock.release();
+    }
+}
+
+wake_lock_switch = $('#wake_lock_switch');
+let use_wake_lock=load_setting('wake_lock', false);
+set_wake_lock(use_wake_lock);
+wake_lock_switch.change( function() {
+    let use_wake_lock  = this.checked;
+    set_wake_lock(use_wake_lock);
+    save_setting('wake_lock', this.checked);
+});
 
 //------
 
@@ -2691,7 +2780,7 @@ $('.layer').change( function(event) {
             try {connect_audio_processor();} catch(e){ console.error(e);}
             running = true;
         }
-        
+        check_wake_lock();        
         //document.getElementById('canvas').focus();
     });
 
@@ -3670,7 +3759,7 @@ while(not_stopped(this_id))
                         else if(txt=='API example')
                             action_script_val = '//example of the API\nwhile(not_stopped(this_id))\n{\n  //wait some time\n  await action("100ms");\n\n  //get information about the sprites 0..7\n  var y_light=sprite_ypos(0);\n  var y_dark=sprite_ypos(0);\n\n  //reserve exclusive port 1..2 access (manual joystick control is blocked)\n  set_port_owner(1,PORT_ACCESSOR.BOT);\n  await action(`j1left1=>j1up1=>400ms=>j1left0=>j1up0`);\n  //give control back to the user\n  set_port_owner(1,PORT_ACCESSOR.MANUAL);\n}';
                         else if(txt=='aimbot')
-                            action_script_val = '//archon aimbot\nconst port_light=2, port_dark=1, sprite_light=4, sprite_dark=6;\n\nwhile(not_stopped(this_id))\n{\n  await aim_and_shoot( port_light /* change bot side here ;-) */ );\n  await action("100ms");\n}\n\nasync function aim_and_shoot(port)\n{ \n  var y_light=sprite_ypos(sprite_light);\n  var y_dark=sprite_ypos(sprite_dark);\n  var x_light=sprite_xpos(sprite_light);\n  var x_dark=sprite_xpos(sprite_dark);\n\n  var y_diff=Math.abs(y_light - y_dark);\n  var x_diff=Math.abs(x_light - x_dark);\n  var angle = shoot_angle(x_diff,y_diff);\n\n  var x_aim=null;\n  var y_aim=null;\n  if( y_diff<10 || 26<angle && angle<28 )\n  {\n     var x_rel = (port == port_dark) ? x_dark-x_light: x_light-x_dark;  \n     x_aim=x_rel > 0 ?"left":"right";   \n  }\n  if( x_diff <10 || 26<angle && angle<28)\n  {\n     var y_rel = (port == port_dark) ? y_dark-y_light: y_light-y_dark;  \n     y_aim=y_rel > 0 ?"up":"down";   \n  }\n  \n  if(x_aim != null || y_aim != null)\n  {\n    set_port_owner(port, \n      PORT_ACCESSOR.BOT);\n    await action(`j${port}left0=>j${port}up0`);\n\n    await action(`j${port}fire1`);\n    if(x_aim != null)\n     await action(`j${port}${x_aim}1`);\n    if(y_aim != null)\n      await action(`j${port}${y_aim}1`);\n    await action("60ms");\n    if(x_aim != null)\n      await action(`j${port}${x_aim}0`);\n    if(y_aim != null)\n      await action(`j${port}${y_aim}0`);\n    await action(`j${port}fire0`);\n    await action("60ms");\n\n    set_port_owner(\n      port,\n      PORT_ACCESSOR.MANUAL\n    );\n    await action("500ms");\n  }\n}\n\nfunction shoot_angle(x, y) {\n  return Math.atan2(y, x) * 180 / Math.PI;\n}';
+                            action_script_val = '//archon aimbot\nconst port_light=2, port_dark=1, sprite_light=4, sprite_dark=6;\n\nwhile(not_stopped(this_id))\n{\n  await aim_and_shoot( port_light /* change bot side here ;-) */ );\n  await action("100ms");\n}\n\nasync function aim_and_shoot(port)\n{ \n  var y_light=sprite_ypos(sprite_light);\n  var y_dark=sprite_ypos(sprite_dark);\n  var x_light=sprite_xpos(sprite_light);\n  var x_dark=sprite_xpos(sprite_dark);\n\n  var y_diff=Math.abs(y_light - y_dark);\n  var x_diff=Math.abs(x_light - x_dark);\n  var angle = shoot_angle(x_diff,y_diff);\n\n  var x_aim=null;\n  var y_aim=null;\n  if( y_diff<10 || 26<angle && angle<28 )\n  {\n     var x_rel = (port == port_dark) ? x_dark-x_light: x_light-x_dark;  \n     x_aim=x_rel < 0 ?"left":"right";   \n  }\n  if( x_diff <10 || 26<angle && angle<28)\n  {\n     var y_rel = (port == port_dark) ? y_dark-y_light: y_light-y_dark;  \n     y_aim=y_rel < 0 ?"up":"down";   \n  }\n  \n  if(x_aim != null || y_aim != null)\n  {\n    set_port_owner(port, \n      PORT_ACCESSOR.BOT);\n    await action(`j${port}left0=>j${port}up0`);\n\n    await action(`j${port}fire1`);\n    if(x_aim != null)\n     await action(`j${port}${x_aim}1`);\n    if(y_aim != null)\n      await action(`j${port}${y_aim}1`);\n    await action("60ms");\n    if(x_aim != null)\n      await action(`j${port}${x_aim}0`);\n    if(y_aim != null)\n      await action(`j${port}${y_aim}0`);\n    await action(`j${port}fire0`);\n    await action("60ms");\n\n    set_port_owner(\n      port,\n      PORT_ACCESSOR.MANUAL\n    );\n    await action("500ms");\n  }\n}\n\nfunction shoot_angle(x, y) {\n  return Math.atan2(y, x) * 180 / Math.PI;\n}';
                         else if(txt=='keyboard combos')
                             action_script_val =
 `//example for key combinations
