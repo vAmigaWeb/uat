@@ -650,11 +650,11 @@ var tempI64;
 // === Body ===
 
 var ASM_CONSTS = {
-  134430148: ($0, $1, $2, $3) => { js_set_display($0,$1,$2,$3); scaleVMCanvas(); },  
- 134430196: ($0) => { if (typeof message_handler === 'undefined') return; message_handler( "MSG_"+UTF8ToString($0) ); },  
- 134430296: ($0, $1, $2) => { if (typeof message_handler === 'undefined') return; message_handler( "MSG_"+UTF8ToString($0), $1, $2 ); },  
- 134430404: ($0, $1, $2, $3) => { js_set_display($0,$1,$2,$3); scaleVMCanvas(); },  
- 134430452: () => { setTimeout(function() {message_handler( 'MSG_ROM_MISSING' );}, 0); }
+  214916: ($0, $1, $2, $3) => { js_set_display($0,$1,$2,$3); scaleVMCanvas(); },  
+ 214964: ($0) => { if (typeof message_handler === 'undefined') return; message_handler( "MSG_"+UTF8ToString($0) ); },  
+ 215064: ($0, $1, $2) => { if (typeof message_handler === 'undefined') return; message_handler( "MSG_"+UTF8ToString($0), $1, $2 ); },  
+ 215172: ($0, $1, $2, $3) => { js_set_display($0,$1,$2,$3); scaleVMCanvas(); },  
+ 215220: () => { setTimeout(function() {message_handler( 'MSG_ROM_MISSING' );}, 0); }
 };
 
 
