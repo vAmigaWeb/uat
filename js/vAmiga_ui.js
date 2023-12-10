@@ -355,6 +355,9 @@ function message_handler(msg, data, data2)
     //UTF8ToString(cores_msg);
     if(msg == "MSG_READY_TO_RUN")
     {
+        if(call_param_warpto !=null && call_param_url==null){
+            wasm_configure("warp_to_frame", `${call_param_warpto}`);
+        }
         //start it async
         setTimeout(function() { try{wasm_first_run=Date.now(); wasm_run();}catch(e){}},100);
         setTimeout(function() { 
@@ -378,9 +381,6 @@ function message_handler(msg, data, data2)
                 }
             }catch(e){}},
         0);
-        if(call_param_warpto !=null && call_param_url==null){
-             wasm_configure("warp_to_frame", `${call_param_warpto}`);
-        }
     }
     else if(msg == "MSG_ROM_MISSING")
     {        
