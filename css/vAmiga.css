@@ -372,19 +372,42 @@ button[id^="detail_run"] {
 
 
 .keycap_shift {
-    font-size:x-small;
+    font-size:calc(var(--keycap_size)/5);
 }
 
 [shift-keys="pressed"] .keycap_shift {
-    font-size:medium;
+    font-size:calc(var(--keycap_size)/3);
+}
+
+.keycap_base {
+    background-color: var(--gray);
+    color:white;
+    border-radius: 0.25rem;
+    align-items: center;
+    text-align: center;
+    font-size:calc(var(--keycap_size)/3);
+
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
 }
 
 .keycap {
-    font-size:medium;
+    font-size:calc(var(--keycap_size)/3);
 }
+/* keyboard grid gap */
+.g-1 { grid-column: auto / span 1 }
+.g-2 { grid-column: auto / span 2 }
+.g-3 { grid-column: auto / span 3 }
+.g-4 { grid-column: auto / span 4 }
+.g-5 { grid-column: auto / span 5 }
+.g-6 { grid-column: auto / span 6 }
+.g-8 { grid-column: auto / span 8 }
+.g-11 { grid-column: auto / span 11 }
+.g-32 { grid-column: auto / span 32 }
 
 [shift-keys="pressed"] .keycap {
-    font-size:x-small;
+    font-size:calc(var(--keycap_size)/5);
 }
 
 [key-state="pressed"] {
@@ -395,8 +418,8 @@ button[id^="detail_run"] {
     background-color: rgb(78,87,95);
     border-color: #222222;
 }
-.capslock {
-    font-size:xx-small;
+.capslock,.ControlLeft {
+    font-size:calc(var(--keycap_size)/5);
 }
 
 .amigakey { 
