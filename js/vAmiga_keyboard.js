@@ -405,12 +405,12 @@ function installKeyboard() {
     }
 //    document.querySelector(':root').style.setProperty('--keycap_size', `${key_size}px`);
     document.querySelector(':root').style.setProperty('--keycap_size', 
-      `calc(calc(calc(max(100vw, 100vh) / 79) * 4) - 3px)`);
+      `calc(calc(calc(calc(max(100vw, 100vh) - 2cm) / ${columns}) * 4) - 3px) `);
     var the_keyBoard=`
 <div 
 draggable="false" 
 style="display:grid;
-grid-template-columns: repeat(${columns}, calc(calc(var(--keycap_size) * 0.7) / 4));
+grid-template-columns: repeat(${columns}, calc(calc(var(--keycap_size) * 0.8) / 4));
 grid-template-rows: repeat(6, var(--keycap_size));
 grid-column-gap: ${col_gap}px;
 grid-row-gap: 3px;
@@ -436,7 +436,7 @@ user-select:none;">
     }
     the_keyBoard+='</div>';
     $('#divKeyboardRows').html(the_keyBoard).
-    prop('style',`width:calc(${columns} * calc(calc(calc(var(--keycap_size) + ${col_gap}) * 0.7) / 4)`);
+    prop('style',`width:calc(${columns} * calc(calc(calc(var(--keycap_size) + ${col_gap}) * 0.8) / 4)`);
 
     release_modifiers=function()
     {
