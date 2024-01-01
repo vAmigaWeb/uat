@@ -403,9 +403,10 @@ function installKeyboard() {
             columns = cellpos;
         }
     }
-//    document.querySelector(':root').style.setProperty('--keycap_size', `${key_size}px`);
+    document.querySelector(':root').style.setProperty('--keyboard_bottom_margin', `0px`);
+    document.querySelector(':root').style.setProperty('--keycap_zoom', `1.0`);
     document.querySelector(':root').style.setProperty('--keycap_size', 
-      `calc(calc(calc(calc(max(100vw, 100vh) - 2cm) / ${columns}) * 4) - 3px) `);
+      `calc(calc(calc(calc(calc(max(100vw, 100vh) - 2cm) / ${columns}) * 4) - 3px) * var(--keycap_zoom))`);
     var the_keyBoard=`
 <div 
 draggable="false" 
@@ -414,7 +415,8 @@ grid-template-columns: repeat(${columns}, calc(calc(var(--keycap_size) * 0.8) / 
 grid-template-rows: repeat(6, var(--keycap_size));
 grid-column-gap: ${col_gap}px;
 grid-row-gap: 3px;
-user-select:none;">
+user-select:none;
+padding-bottom: var(--keyboard_bottom_margin)">
     `;
     for(let row of keymap)
     {
