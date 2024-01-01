@@ -507,7 +507,7 @@ padding-bottom: var(--keyboard_bottom_margin)">
 
         let the_key_element=document.getElementById("button_"+keydef.c);
         
-        let key_down_handler=function() 
+        let key_down_handler=function(event) 
         {
             if(keydef.c == 'hide_keyboard')
             {
@@ -554,6 +554,7 @@ padding-bottom: var(--keyboard_bottom_margin)">
 
                     if(keydef.c == 'ShiftLeft' ||keydef.c == 'ShiftRight')
                     {
+                        console.log(event);
                         if(document.body.getAttribute(keydef.c+'-key')=='')
                         {
                             document.body.setAttribute('shift-keys', 'pressed');
@@ -567,7 +568,9 @@ padding-bottom: var(--keyboard_bottom_margin)">
                             shift_pressed_count--;
                             if(shift_pressed_count==0)
                             {
-                            document.body.setAttribute('shift-keys', '');
+                                //TODO: smart und bei iOS longpress kommt er hier rein!
+                                //TODO: event ausloggen
+                                document.body.setAttribute('shift-keys', '');
                             }   
                         }
                     }
@@ -649,16 +652,8 @@ padding-bottom: var(--keyboard_bottom_margin)">
             event.preventDefault(); 
             if(current_vbk_touch.startsWith("smart"))
             {
-                key_down_handler();
-                if( keydef.c != 'CapsLock' &&
-                    keydef.c != 'ShiftLeft' && keydef.c != 'ShiftRight' &&
-                    keydef.c != 'ControlLeft' &&
-                    keydef.c != 'leftAmiga'&&keydef.c != 'rightAmiga' &&
-                    keydef.c != 'AltLeft'&&keydef.c != 'AltRight'
-                )
-                {
-                    setTimeout(key_up_handler,100); 
-                }
+                key_down_handler(event);
+                setTimeout(key_up_handler,100); 
             }
             else
             {
