@@ -309,7 +309,7 @@ function installKeyboard() {
     [{k:'\u{21e5}',c:'Tab',g:6}, {k:'Q'},{k:'W'},{k:'E'},{k:'R'},{k:'T'},{k:'Y'},{k:'U'},{k:'I'},{k:'O'},{k:'P'},{k:'[',sk:'{',c:'BracketLeft'},{k:']', sk:'}',c:'BracketRight'}, {k:'\u{21b5}',c:'Enter',g:8},{g:5}, {k:'4',c:'Numpad4'},{k:'5',c:'Numpad5'},{k:'6',c:'Numpad6'}], 
     [{k:'CTRL',c:'ControlLeft',cls:'ControlLeft'},{k:'CAPS</br>LOCK', c:'CapsLock',cls:'capslock'},{k:'A'},{k:'S'},{k:'D'},{k:'F'},{k:'G'},{k:'H'},{k:'J'},{k:'K'},{k:'L'},{k:';', sk:':', c:'Semicolon'},{k:',', sk:'\"', c:'Quote'},{k:'#', sk:'^', c:'hashtag'},{g:11}, {k:'1',c:'Numpad1'},{k:'2',c:'Numpad2'},{k:'3',c:'Numpad3'}], 
     [{k:'\u{21e7}',c:'ShiftLeft',g:6},{k:'<', sk:'>', c:'laceBrace'},{k:'Z'},{k:'X'},{k:'C'},{k:'V'},{k:'B'},{k:'N'},{k:'M'},{k:',',sk:'<',c:'Comma'},{k:'.',sk:'>',c:'Period'},{k:'/',sk:'?', c:'Slash'},{k:'\u{21e7}',c:'ShiftRight',g:8},{k:'\u{2191}',c:'ArrowUp'},{g:5},{k:'0',c:'Numpad0',g:8},{k:'.',c:'NumpadDecimal'}],
-    [{},{k:'Alt', c:'AltLeft'},{k:'A', c:'leftAmiga', cls:'amigakey'},{k:'SPACE', c:'Space', g:32},{k:'A', c:'rightAmiga', cls:'amigakey'},{k:'Alt', c:'AltRight'},{g:2}, {k:'\u{2190}',c:'ArrowLeft'},{k:'\u{2193}', c:'ArrowDown'},{k:'\u{2192}', c:'ArrowRight'}, {g:1}, {k:'-',c:'NumpadSubtract'},{k:'Enter',c:'NumpadEnter',g:8}]
+    [{},{k:'Alt', c:'AltLeft'},{k:'A', c:'leftAmiga', cls:'amigakey'},{k:' ', c:'Space', g:32},{k:'A', c:'rightAmiga', cls:'amigakey'},{k:'Alt', c:'AltRight'},{g:2}, {k:'\u{2190}',c:'ArrowLeft'},{k:'\u{2193}', c:'ArrowDown'},{k:'\u{2192}', c:'ArrowRight'}, {g:1}, {k:'-',c:'NumpadSubtract'},{k:'Enter',c:'NumpadEnter',g:8}]
     ];
 
     let  renderKey  = (keydef,cellpos) => {
@@ -650,7 +650,15 @@ padding-bottom: var(--keyboard_bottom_margin)">
             if(current_vbk_touch.startsWith("smart"))
             {
                 key_down_handler();
-                setTimeout(key_up_handler,100); 
+                if( keydef.c != 'CapsLock' &&
+                    keydef.c != 'ShiftLeft' && keydef.c != 'ShiftRight' &&
+                    keydef.c != 'ControlLeft' &&
+                    keydef.c != 'leftAmiga'&&keydef.c != 'rightAmiga' &&
+                    keydef.c != 'AltLeft'&&keydef.c != 'AltRight'
+                )
+                {
+                    setTimeout(key_up_handler,100); 
+                }
             }
             else
             {
