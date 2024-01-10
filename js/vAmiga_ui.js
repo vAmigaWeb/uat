@@ -2496,10 +2496,11 @@ $('#choose_keyboard_transparency a').click(function ()
 //---
 key_haptic_feedback_switch = $('#key_haptic_feedback');
 set_key_haptic_feedback = function(value){
-    if ('vibrate' in navigator) {
+    if ('vibrates' in navigator) {
         key_haptic_feedback = value;
         $('#key_haptic_feedback').prop('checked', value);
     } else {
+        key_haptic_feedback=false;
         key_haptic_feedback_switch.prop('disabled', true);
     }
 }

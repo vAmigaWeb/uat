@@ -509,7 +509,6 @@ draggable="false">
             }
             if(key_haptic_feedback)
             {
-                console.log("vibrate");
                 navigator.vibrate(15);
             }
 
