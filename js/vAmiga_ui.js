@@ -370,6 +370,9 @@ function message_handler(msg, data, data2)
     //UTF8ToString(cores_msg);
     if(msg == "MSG_READY_TO_RUN")
     {
+        if(call_param_warpto !=null && call_param_url==null){
+            wasm_configure("warp_to_frame", `${call_param_warpto}`);
+        }
         //start it async
         setTimeout(function() { try{wasm_first_run=Date.now(); wasm_run();}catch(e){}},100);
         setTimeout(function() { 
@@ -393,9 +396,6 @@ function message_handler(msg, data, data2)
                 }
             }catch(e){}},
         0);
-        if(call_param_warpto !=null && call_param_url==null){
-             wasm_configure("warp_to_frame", `${call_param_warpto}`);
-        }
     }
     else if(msg == "MSG_ROM_MISSING")
     {        
@@ -496,6 +496,11 @@ function message_handler(msg, data, data2)
     else if(msg == "MSG_SER_OUT")
     {
       serial_port_out_handler(data);
+    }
+    else if(msg == "MSG_CTRL_AMIGA_AMIGA")
+    {
+        setTimeout(release_modifiers, 0);
+        wasm_reset();
     }
 }
 
@@ -2496,7 +2501,7 @@ $('#choose_keyboard_transparency a').click(function ()
 //---
 key_haptic_feedback_switch = $('#key_haptic_feedback');
 set_key_haptic_feedback = function(value){
-    if ('vibrates' in navigator) {
+    if ('vibrate' in navigator) {
         key_haptic_feedback = value;
         $('#key_haptic_feedback').prop('checked', value);
     } else {
@@ -2979,6 +2984,7 @@ $('.layer').change( function(event) {
         $("#modal_reset").modal('show');
     }
     document.getElementById('button_reset_confirmed').onclick = function() {
+        setTimeout(release_modifiers, 0);
         wasm_reset();
 
         if(!is_running())
@@ -3572,9 +3578,9 @@ $('.layer').change( function(event) {
         }
         else if(!port2.startsWith('mouse touch'))
         {
-            canvas.removeEventListener('touchstart',emulate_mouse_touchpad_start, false);
-            canvas.removeEventListener('touchmove',emulate_mouse_touchpad_move, false);
-            canvas.removeEventListener('touchend',emulate_mouse_touchpad_end, false);
+            document.removeEventListener('touchstart',emulate_mouse_touchpad_start, false);
+            document.removeEventListener('touchmove',emulate_mouse_touchpad_move, false);
+            document.removeEventListener('touchend',emulate_mouse_touchpad_end, false);
         }
         this.blur();
     }
@@ -3618,9 +3624,9 @@ $('.layer').change( function(event) {
         }
         else if(!port1.startsWith('mouse touch'))
         {
-            canvas.removeEventListener('touchstart',emulate_mouse_touchpad_start, false);
-            canvas.removeEventListener('touchmove',emulate_mouse_touchpad_move, false);
-            canvas.removeEventListener('touchend',emulate_mouse_touchpad_end, false);
+            document.removeEventListener('touchstart',emulate_mouse_touchpad_start, false);
+            document.removeEventListener('touchmove',emulate_mouse_touchpad_move, false);
+            document.removeEventListener('touchend',emulate_mouse_touchpad_end, false);
         }
         this.blur();
     }
