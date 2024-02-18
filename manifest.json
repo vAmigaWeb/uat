@@ -21,13 +21,6 @@
       "src": "img/icon_512x512.png",
       "type": "image/png",
       "sizes": "512x512",
-      "purpose": "any"
-    },
-    {
-      "src": "img/icon_maskable_x512.png",
-      "type": "image/png",
-      "sizes": "512x512",
-      "purpose": "maskable"
     }
   ]
 }
