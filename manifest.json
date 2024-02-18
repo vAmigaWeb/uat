@@ -8,9 +8,15 @@
   "theme_color": "black",
   "icons": [
     {
-      "src": "va-icon.png",
+      "src": "img/icon_413x413.png",
       "type": "image/png",
       "sizes": "413x413"
+    },
+    {
+      "src": "img/icon_maskable_x512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "maskable"
     }
   ]
 }
