@@ -1,11 +1,11 @@
 {
   "name": "vAmigaWeb",
   "short_name": "vAmigaWeb",
-  "start_url": "/uat/",
+  "start_url": "https://vamigaweb.github.io/uat/",
   "scope": ".",
   "display": "fullscreen",
-  "background_color": "rgb(0, 0, 0)",
-  "theme_color": "rgb(0, 0, 0)",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "icons": [
     {
       "src": "img/icon_borderless_x413.png",
