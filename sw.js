@@ -79,7 +79,8 @@ self.addEventListener('activate', evt => {
 */
 });
 
-self.addEventListener('fetch', function(event){
+
+self.addEventListener('xxxfetch', function(event){
   event.respondWith(async function () {
       //is this url one that should not be cached at all ? 
       if(
