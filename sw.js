@@ -47,6 +47,7 @@ self.addEventListener('install', evt => {
 // activate event
 self.addEventListener('activate', evt => {
   console.log('service worker activated');
+  return;
   let check_and_update=async () =>{    
     current_version=await get_settings_cache_value("active_version");
     if(current_version == null)
@@ -80,7 +81,7 @@ self.addEventListener('activate', evt => {
 });
 
 
-self.addEventListener('xxxfetch', function(event){
+self.addEventListener('fetch', function(event){
   event.respondWith(async function () {
       //is this url one that should not be cached at all ? 
       if(
