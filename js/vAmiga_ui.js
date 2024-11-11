@@ -1,4 +1,5 @@
-let global_apptitle="vAmiga - start screen"
+const default_app_title="vAmiga - start screen";
+let global_apptitle=default_app_title;
 let call_param_openROMS=false;
 let call_param_gpu=null;
 let call_param_navbar=null;
@@ -15,12 +16,18 @@ let call_param_url=null;
 let call_param_display=null;
 let call_param_wait_for_kickstart_injection=null;
 let call_param_kickstart_rom_url=null;
+let call_param_kickstart_ext_url=null;
+
+let patch_kickemu_address=null;
+let patch_kickemu_rom=null;
 
 let startup_script_executed=false;
+let on_ready_to_run=()=>{};
+let on_hdr_step=(drive_number, cylinder)=>{};
+let on_power_led_dim=()=>{};
 let df_mount_list=[];//to auto mount disks from zip e.g. ["Batman_Rises_disk1.adf","Batman_Rises_disk2.adf"];
 let hd_mount_list=[];
 
-let virtual_keyboard_clipping = true; //keyboard scrolls when it clips
 let use_wide_screen=false;
 let use_ntsc_pixel=false;
 let joystick_button_count=1;
@@ -31,7 +38,7 @@ let fixed_touch_joystick_base=false;
 let stationaryBase = false;
 
 const AudioContext = window.AudioContext || window.webkitAudioContext;
-const audioContext = new AudioContext();
+let audioContext = new AudioContext();
 let audio_connected=false;
 
 let load_sound = async function(url){
@@ -160,6 +167,7 @@ function get_parameter_link()
         call_param_display=call_obj.display === undefined ? null : call_obj.display;
         call_param_wait_for_kickstart_injection=call_obj.wait_for_kickstart_injection === undefined ? null : call_obj.wait_for_kickstart_injection;
         call_param_kickstart_rom_url=call_obj.kickstart_rom_url === undefined ? null : call_obj.kickstart_rom_url;
+        call_param_kickstart_ext_url=call_obj.kickstart_ext_url === undefined ? null : call_obj.kickstart_ext_url;
         call_param_gpu = call_obj.gpu === undefined ? null : call_obj.gpu;
 
         if(call_obj.touch)
@@ -312,27 +320,32 @@ function get_parameter_link()
 
 var parameter_link__already_checked=false;
 var parameter_link_mount_in_df0=false;
-function load_parameter_link()
+async function load_parameter_link()
 {
     if($('#modal_roms').is(":visible"))
     {
-        return;
+        return null;
     }
 
     if(parameter_link__already_checked)
-      return;
+      return null;
     
     parameter_link__already_checked=true;
     var parameter_link = get_parameter_link();
     if(parameter_link != null)
     {
-        parameter_link_mount_in_df0=parameter_link.match(/[.](adf|hdf|dms|exe)$/i);
-        get_data_collector("csdb").run_link("call_parameter", 0,parameter_link);            
+        parameter_link_mount_in_df0=parameter_link.match(/[.](adf|hdf|dms|exe|st)$/i);
+        //get_data_collector("csdb").run_link("call_parameter", 0,parameter_link);            
+        let response = await fetch(parameter_link);
+        file_slot_file_name = decodeURIComponent(response.url.match(".*/(.*)$")[1]);
+        file_slot_file = new Uint8Array( await response.arrayBuffer());
+
+        configure_file_dialog(reset=true);
     }
+    return parameter_link;
 }
 
 
-var wasm_first_run=null;
 var required_roms_loaded =false;
 
 var last_drive_event=0;
@@ -365,17 +378,24 @@ set_serial_port_out_handler((data) => {
     window.parent.postMessage({ msg: 'serial_port_out', value: data},"*");
 });
 function message_handler(msg, data, data2)
+{   
+    queueMicrotask(()=>{
+        message_handler_queue_worker( msg, data, data2 )
+    });
+}
+function message_handler_queue_worker(msg, data, data2)
 {
     //console.log(`js receives msg:${msg} data:${data}`);
     //UTF8ToString(cores_msg);
     if(msg == "MSG_READY_TO_RUN")
     {
+        try{on_ready_to_run()} catch(error){console.error(error)}
         if(call_param_warpto !=null && call_param_url==null){
             wasm_configure("warp_to_frame", `${call_param_warpto}`);
         }
         //start it async
-        setTimeout(function() { try{wasm_first_run=Date.now(); wasm_run();}catch(e){}},100);
-        setTimeout(function() { 
+        //setTimeout(()=>{try{wasm_run();}catch(e){}},100);
+        setTimeout(async function() { 
             try{
                 if(call_param_navbar=='hidden')
                 {
@@ -383,7 +403,16 @@ function message_handler(msg, data, data2)
                         $("#button_show_menu").click();
                     },500);
                 }
-                load_parameter_link();
+                let url = await load_parameter_link();
+
+                if(url == null && hd_mount_list.length==0 && df_mount_list.length==0)
+                { //when there is no media url to load, power on the Amiga directly here
+                  //otherwise it will be started after media is inserted 
+                  setTimeout(function(){
+                    try{wasm_run();running=true;}catch(e){}
+                  },100);
+                } 
+                
                 if(call_param_wide != null)
                 {
                     use_wide_screen = call_param_wide;
@@ -409,7 +438,11 @@ function message_handler(msg, data, data2)
             else if(call_param_kickstart_rom_url != null)
             {//this needs to be samesite or cross origin with CORS enabled
                 let byteArray=new Uint8Array(await (await fetch(call_param_kickstart_rom_url)).arrayBuffer());
-                let rom_type=wasm_loadfile("kick.rom_file", byteArray);
+                wasm_loadfile("kick.rom_file", byteArray);
+                if(call_param_kickstart_ext_url != null)
+                {
+                    wasm_loadfile("kick.rom_ext_file", new Uint8Array(await (await fetch(call_param_kickstart_ext_url)).arrayBuffer()));
+                }
                 wasm_reset();
             }
             //try to load currently user selected kickstart
@@ -436,6 +469,25 @@ function message_handler(msg, data, data2)
     else if(msg == "MSG_PAUSE")
     {
         emulator_currently_runs=false;
+    }
+    else if(msg === "MSG_WARP")
+    {
+        let is_warping = Module._wasm_is_warping();
+        $("#button_ff").html(
+            is_warping ?
+            `
+<svg xmlns="http://www.w3.org/2000/svg" width="1.6em" height="1.6em" fill="currentColor" class="bi bi-fast-forward-fill" viewBox="0 0 16 16">
+  <path d="M7.596 7.304a.802.802 0 0 1 0 1.392l-6.363 3.692C.713 12.69 0 12.345 0 11.692V4.308c0-.653.713-.998 1.233-.696z"/>
+  <path d="M15.596 7.304a.802.802 0 0 1 0 1.392l-6.363 3.692C8.713 12.69 8 12.345 8 11.692V4.308c0-.653.713-.998 1.233-.696z"/>
+</svg>`:
+`
+<svg xmlns="http://www.w3.org/2000/svg" width="1.6em" height="1.6em" fill="currentColor" class="bi bi-fast-forward" viewBox="0 0 16 16">
+          <path d="M6.804 8 1 4.633v6.734zm.792-.696a.802.802 0 0 1 0 1.392l-6.363 3.692C.713 12.69 0 12.345 0 11.692V4.308c0-.653.713-.998 1.233-.696z"/>
+          <path d="M14.804 8 9 4.633v6.734zm.792-.696a.802.802 0 0 1 0 1.392l-6.363 3.692C8.713 12.69 8 12.345 8 11.692V4.308c0-.653.713-.998 1.233-.696z"/>
+</svg>
+`
+);
+        window.parent.postMessage({ msg: 'render_run_state', value: is_running(), is_warping:  is_warping },"*");
     }
     else if(msg == "MSG_VIDEO_FORMAT")
     {
@@ -464,26 +516,36 @@ function message_handler(msg, data, data2)
     else if(msg == "MSG_HDR_STEP")
     {
         play_sound(audio_hd_step);
-        //   console.log(`MSG_DRIVE_STEP ${data} ${data2}`);
         $("#drop_zone").html(`dh${data} ${data2}`);
+        on_hdr_step(data, data2);
+        if(patch_kickemu_address && patch_kickemu_rom)
+        {
+            wasm_mem_patch(patch_kickemu_address, patch_kickemu_rom);
+            patch_kickemu_address=null;
+            patch_kickemu_rom=null;
+        }
+    }
+    else if(msg == "MSG_POWER_LED_DIM")
+    {
+        on_power_led_dim();
     }
     else if(msg == "MSG_SNAPSHOT_RESTORED")
     {
-        let v=wasm_get_config_item("BLITTER_ACCURACY");
+        let v=wasm_get_config_item("BLITTER.ACCURACY");
         $(`#button_OPT_BLITTER_ACCURACY`).text(`blitter accuracy=${v} (snapshot)`);
         
-        v=wasm_get_config_item("DRIVE_SPEED");
+        v=wasm_get_config_item("DC.SPEED");
         $(`#button_OPT_DRIVE_SPEED`).text(`drive speed=${v} (snapshot)`);
 
-        v=wasm_get_config_item("CPU_REVISION");
+        v=wasm_get_config_item("CPU.REVISION");
         $(`#button_OPT_CPU_REVISION`).text(`CPU=680${v}0 (snapshot)`);
-        v=wasm_get_config_item("CPU_OVERCLOCKING");
+        v=wasm_get_config_item("CPU.OVERCLOCKING");
         $(`#button_OPT_CPU_OVERCLOCKING`).text(`${Math.round((v==0?1:v)*7.09)} MHz (snapshot)`);
-        v=wasm_get_config_item("AGNUS_REVISION");
+        v=wasm_get_config_item("AGNUS.REVISION");
         let agnus_revs=['OCS_OLD','OCS','ECS_1MB','ECS_2MB'];
         $(`#button_OPT_AGNUS_REVISION`).text(`agnus revision=${agnus_revs[v]} (snapshot)`);
 
-        v=wasm_get_config_item("DENISE_REVISION");
+        v=wasm_get_config_item("DENISE.REVISION");
         let denise_revs=['OCS','ECS'];
         $(`#button_OPT_DENISE_REVISION`).text(`denise revision=${denise_revs[v]} (snapshot)`);
       
@@ -504,7 +566,7 @@ function message_handler(msg, data, data2)
     }
 }
 
-async function fetchOpenROMS(){
+async function fetchOpenROMS(osname='aros'){
     var installer = async function(suffix, response) {
         try{
             var arrayBuffer = await response.arrayBuffer();
@@ -525,11 +587,18 @@ async function fetchOpenROMS(){
             fill_ext_icons();
         }  
     }
-    
-    let response = await fetch("roms/aros.bin");
-    await installer('.rom_file', response);
-    response = await fetch("roms/aros_ext.bin");
-    await installer('.rom_ext_file', response);   
+    if(osname=='aros')
+    {
+        let response = await fetch("roms/aros.bin");
+        await installer('.rom_file', response);
+        response = await fetch("roms/aros_ext.bin");
+        await installer('.rom_ext_file', response);   
+    }
+    else if(osname=='emutos')
+    {
+        let response = await fetch("roms/emutos-amiga.bin");
+        await installer('.rom_file', response);
+    }
 }
 
 
@@ -556,6 +625,10 @@ function fill_rom_icons(){
     {
         icon="img/rom_hyperion.png";
     }
+    else if(rom_infos.romTitle.toLowerCase().indexOf("emutos")>=0)
+    {   
+        icon="img/rom_emutos.png";
+    }    
     else
     {
         icon="img/rom_original.png";
@@ -896,7 +969,7 @@ function configure_file_dialog(reset=false)
                                 }
                             }).then(function (u8) {
                                 file_slot_file_name=path;
-                                if(!path.toLowerCase().match(/[.](zip|adf|hdf|dms|exe|vAmiga)$/i))
+                                if(!path.toLowerCase().match(/[.](zip|adf|hdf|dms|exe|vAmiga|st)$/i))
                                 {
                                     file_slot_file_name+=".disk";
                                 }
@@ -905,6 +978,7 @@ function configure_file_dialog(reset=false)
                                 if(mountable_count==1)
                                 {//in case that there was only one mountable file in the zip, auto mount it
                                     configure_file_dialog(false);
+                                    window.parent.postMessage({ msg: 'hide_zip_folder'},"*");
                                 }
                                 else
                                 {//file is ready to insert
@@ -965,7 +1039,7 @@ function configure_file_dialog(reset=false)
                 $("#button_insert_file").html("mount file"+return_icon);
                 $("#button_insert_file").attr("disabled", true);
             }
-            else if(file_slot_file_name.match(/[.](adf|hdf|dms|exe|vAmiga|disk)$/i))
+            else if(file_slot_file_name.match(/[.](adf|hdf|dms|exe|vAmiga|st|disk)$/i))
             {
                 if(df_mount_list.includes(file_slot_file_name) || hd_mount_list.includes(file_slot_file_name))
                 {
@@ -1000,13 +1074,21 @@ function configure_file_dialog(reset=false)
 
 function prompt_for_drive()
 {
-    let cancel=`<div class="close" style="position:absolute;top:0.2em;right:0.4em;cursor:pointer" onclick="show_drive_select(false)">×</div>`;
-
+    let cancel=`<div id="prompt_drive_cancel" class="close" style="position:absolute;top:0.2em;right:0.4em;cursor:pointer" onclick="show_drive_select(false)">×</div>`;
+    let_drive_select_stay_open=false;
     show_drive_select=(show)=>{
+        if(let_drive_select_stay_open)
+        {
+            let_drive_select_stay_open=false;
+            if(!show) return;
+        }
+
         document.getElementById("div_drive_select").setAttribute('class', `slide-${show?"in":"out"}`);
         if(show)
         {
             $("#div_drive_select").show();
+            add_pencil_support_to_childs(document.getElementById("drive_select_choice"));
+            add_pencil_support(document.getElementById("prompt_drive_cancel"));
         }
         else
         {
@@ -1014,7 +1096,7 @@ function prompt_for_drive()
         }
     }
 
-    if(file_slot_file_name.match(/[.](adf|dms|exe|disk)$/i))
+    if(file_slot_file_name.match(/[.](adf|dms|exe|st|disk)$/i))
     {
         let df_count=0;
         for(let i = 0; i<4;i++)
@@ -1232,8 +1314,8 @@ timestampjoy1 = null;
 timestampjoy2 = null;
 last_touch_cmd = null;
 last_touch_fire= null;
-/* callback for wasm mainsdl.cpp */
-function draw_one_frame()
+
+function query_input_controllers()
 {
     let gamepads=null;
 
@@ -1580,10 +1662,18 @@ function restore_manual_state(port)
 
 
 function InitWrappers() {
+    try{add_pencil_support_for_elements_which_need_it();} catch(e) {console.error(e)}
     wasm_loadfile = function (file_name, file_buffer, drv_number=0) {
-        var file_slot_wasmbuf = Module._malloc(file_buffer.byteLength);
+        let file_slot_wasmbuf = Module._malloc(file_buffer.byteLength);
         Module.HEAPU8.set(file_buffer, file_slot_wasmbuf);
-        var retVal=Module.ccall('wasm_loadFile', 'string', ['string','number','number', 'number'], [file_name,file_slot_wasmbuf,file_buffer.byteLength, drv_number]);
+        let retVal=Module.ccall('wasm_loadFile', 'string', ['string','number','number', 'number'], [file_name,file_slot_wasmbuf,file_buffer.byteLength, drv_number]);
+        Module._free(file_slot_wasmbuf);
+        return retVal;                    
+    }
+    wasm_mem_patch = function (amiga_mem_address, file_buffer) {
+        let file_slot_wasmbuf = Module._malloc(file_buffer.byteLength);
+        Module.HEAPU8.set(file_buffer, file_slot_wasmbuf);
+        let retVal=Module.ccall('wasm_mem_patch', 'string', ['number','number', 'number'], [amiga_mem_address, file_slot_wasmbuf,file_buffer.byteLength]);
         Module._free(file_slot_wasmbuf);
         return retVal;                    
     }
@@ -1610,7 +1700,7 @@ function InitWrappers() {
 
     do_animation_frame=null;
     queued_executes=0;
-    
+
     wasm_run = function () {
         Module._wasm_run();       
         if(do_animation_frame == null)
@@ -1630,7 +1720,7 @@ function InitWrappers() {
                 rendered_frame_id=0;
                 calculate_and_render=(now)=>
                 {
-                    draw_one_frame(); // to gather joystick information 
+                    query_input_controllers();
                     Module._wasm_worker_run();                    
                     let current_rendered_frame_id=Module._wasm_frame_info();
                     if(rendered_frame_id !== current_rendered_frame_id)
@@ -1644,7 +1734,7 @@ function InitWrappers() {
             {
                 calculate_and_render=(now)=>
                 {
-                    draw_one_frame(); // to gather joystick information 
+                    query_input_controllers();
                     let behind = Module._wasm_draw_one_frame(now);
                     if(behind<0)
                         return;
@@ -1674,7 +1764,7 @@ function InitWrappers() {
         }
     }
 
-    wasm_take_user_snapshot = Module.cwrap('wasm_take_user_snapshot', 'undefined');
+    wasm_take_user_snapshot = Module.cwrap('wasm_take_user_snapshot', 'string');
     wasm_pull_user_snapshot_file = Module.cwrap('wasm_pull_user_snapshot_file', 'string');
     wasm_delete_user_snapshot = Module.cwrap('wasm_delete_user_snapshot', 'undefined');
 
@@ -1696,6 +1786,7 @@ function InitWrappers() {
     wasm_eject_disk = Module.cwrap('wasm_eject_disk', 'undefined', ['string']);
     wasm_export_disk = Module.cwrap('wasm_export_disk', 'string', ['string']);
     wasm_configure = Module.cwrap('wasm_configure', 'string', ['string', 'string']);
+    wasm_configure_key = Module.cwrap('wasm_configure_key', 'string', ['string', 'string', 'string']);
     wasm_write_string_to_ser = Module.cwrap('wasm_write_string_to_ser', 'undefined', ['string']);
     wasm_print_error = Module.cwrap('wasm_print_error', 'undefined', ['number']);
     wasm_power_on = Module.cwrap('wasm_power_on', 'string', ['number']);
@@ -1712,9 +1803,26 @@ function InitWrappers() {
     wasm_get_config_item = Module.cwrap('wasm_get_config_item', 'number', ['string']);
     wasm_get_core_version = Module.cwrap('wasm_get_core_version', 'string');
 
+    resume_audio=async ()=>{
+        try {
+            await audioContext.resume();  
+        }
+        catch(e) {
+            console.error(e); console.error("try to setup audio from scratch...");
+            try {
+                await audioContext.close();
+            }
+            finally
+            {
+                audio_connected=false; 
+                audioContext=new AudioContext();
+            }
+        }
+    }
+    
     connect_audio_processor_standard = async () => {
         if(audioContext.state !== 'running') {
-            await audioContext.resume();  
+            await resume_audio();
         }
         if(audio_connected==true)
             return; 
@@ -1795,7 +1903,7 @@ function InitWrappers() {
 
     connect_audio_processor_shared_memory= async ()=>{
         if(audioContext.state !== 'running') {
-            await audioContext.resume();  
+            await resume_audio();
         }
         if(audio_connected==true)
             return; 
@@ -1919,22 +2027,10 @@ function InitWrappers() {
 
     add_unlock_user_action();
     
-    get_audio_context=function() {
-        if (typeof Module === 'undefined'
-        || typeof Module.SDL2 == 'undefined'
-        || typeof Module.SDL2.audioContext == 'undefined')
-        {
-            return null;
-        }
-        else
-        {
-            return Module.SDL2.audioContext;
-        }
-    }
     window.addEventListener('message', event => {
         if(event.data == "poll_state")
         {
-            window.parent.postMessage({ msg: 'render_run_state', value: is_running()},"*");
+            window.parent.postMessage({ msg: 'render_run_state', value: is_running(), is_warping:  Module._wasm_is_warping() },"*");
             window.parent.postMessage({ msg: 'render_current_audio_state', 
                 value: audioContext == null ? 'suspended' : audioContext.state},"*"); 
         }
@@ -1948,15 +2044,14 @@ function InitWrappers() {
         }
         else if(event.data == "toggle_audio()")
         {
-            var context = audioContext; //get_audio_context();
-            if (context !=null)
+            if (audioContext !=null)
             {
-                if(context.state == 'suspended') {
-                    context.resume();
+                if(audioContext.state == 'suspended') {
+                    audioContext.resume();
                 }
-                else if (context.state == 'running')
+                else if (audioContext.state == 'running')
                 {
-                    context.suspend();
+                    audioContext.suspend();
                 }
             }
             window.parent.postMessage({ msg: 'render_current_audio_state', 
@@ -2005,16 +2100,30 @@ function InitWrappers() {
             }
 
             let with_reset=false;
+            //put whdload kickemu into disk drive
+            if(event.data.mount_kickstart_in_dfn !==undefined &&
+                event.data.mount_kickstart_in_dfn >=0 )
+            {
+                wasm_loadfile("kick-rom.disk", event.data.kickemu_rom, event.data.mount_kickstart_in_dfn);
+            }
             //check if any roms should be preloaded first... 
             if(event.data.kickstart_rom !== undefined)
             {
-                let byteArray = event.data.kickstart_rom;
-                let rom_type=wasm_loadfile("kick.rom_file", byteArray);
+                wasm_loadfile("kick.rom_file", event.data.kickstart_rom);
                 //copy_to_local_storage(rom_type, byteArray);
+                if(event.data.kickstart_ext !== undefined)
+                {
+                    wasm_loadfile("kick.rom_ext_file", event.data.kickstart_ext);
+                }
                 with_reset=true;
             }
             if(with_reset){
                 wasm_reset();
+            }
+            if(event.data.patch_kickstart_into_address !==undefined)
+            {
+                patch_kickemu_address=event.data.patch_kickstart_into_address;
+                patch_kickemu_rom=event.data.kickemu_rom;
             }
             if(event.data.file_name !== undefined && event.data.file !== undefined)
             {
@@ -2080,7 +2189,6 @@ function InitWrappers() {
             if(!has_pointer_lock_fallback)
             {
                 add_pointer_lock_fallback();      
-                has_pointer_lock_fallback=true;
             }
             return;
         }
@@ -2088,7 +2196,8 @@ function InitWrappers() {
         {
             try_to_lock_pointer++;
             try {
-                await canvas.requestPointerLock();           
+                if(has_pointer_lock_fallback) {remove_pointer_lock_fallback();}
+                await canvas.requestPointerLock();
                 try_to_lock_pointer=0;
             } catch (error) {
                 await sleep(100);
@@ -2101,6 +2210,7 @@ function InitWrappers() {
         document.addEventListener("mousemove", updatePosition_fallback, false); 
         document.addEventListener("mousedown", mouseDown, false);
         document.addEventListener("mouseup", mouseUp, false);
+        has_pointer_lock_fallback=true;
     };
     window.remove_pointer_lock_fallback=()=>{
         document.removeEventListener("mousemove", updatePosition_fallback, false); 
@@ -2108,6 +2218,7 @@ function InitWrappers() {
         document.removeEventListener("mouseup", mouseUp, false);
         has_pointer_lock_fallback=false;
     };
+    document.addEventListener('pointerlockerror', add_pointer_lock_fallback, false);
 
     // Hook pointer lock state change events for different browsers
     document.addEventListener('pointerlockchange', lockChangeAlert, false);
@@ -2288,22 +2399,6 @@ function InitWrappers() {
 
     installKeyboard();
     $("#button_keyboard").click(function(){
-        if(virtual_keyboard_clipping==false)
-        {
-            let body_width =$("body").innerWidth();
-            let vk_abs_width=750+25; //+25 border
-            let vk=$("#virtual_keyboard");
-
-            //calculate scaled width
-            let scaled= vk_abs_width/body_width;
-            if(scaled < 1)
-            {
-                scaled = 1;
-            }
-            vk.css("width", `${scaled*100}vw`);
-            vk.css("transform", `scale(${1/scaled})`);
-            vk.css("transform-origin", `left bottom`);    
-        }
         setTimeout( scaleVMCanvas, 500);
     });
 
@@ -2357,19 +2452,71 @@ function InitWrappers() {
         menu_button_fade_in();
     }});
 
-
-
-
 //----
-    lock_action_button_switch = $('#lock_action_button_switch');
-    lock_action_button=load_setting('lock_action_button', false);
-    lock_action_button_switch.prop('checked', lock_action_button);
-    lock_action_button_switch.change( function() {
-        lock_action_button=this.checked;
-        install_custom_keys();
-        save_setting('lock_action_button', lock_action_button);
+    auto_selecting_app_title_switch = $('#auto_selecting_app_title_switch');
+    auto_selecting_app_title=load_setting('auto_selecting_app_title', true);
+    auto_selecting_app_title_switch.prop('checked', auto_selecting_app_title);
+    auto_selecting_help = ()=>{
+        if(auto_selecting_app_title)
+            {
+                $("#auto_select_on_help").show();
+                $("#auto_select_off_help").hide();
+            }
+            else
+            {
+                $("#auto_select_on_help").hide();
+                $("#auto_select_off_help").show();
+            }    
+    }
+    auto_selecting_help();
+    
+    
+    auto_selecting_app_title_switch.change( function() {
+        auto_selecting_app_title=this.checked;
+        save_setting('auto_selecting_app_title', auto_selecting_app_title);
+        auto_selecting_help();
     });
-//----
+    //----
+    movable_action_buttons_in_settings_switch = $('#movable_action_buttons_in_settings_switch');
+    movable_action_buttons=load_setting('movable_action_buttons', true);
+ 
+    movable_action_buttons_in_settings_switch.prop('checked', movable_action_buttons);
+    movable_action_buttons_in_settings_switch.change( function() {
+        movable_action_buttons=this.checked;
+        install_custom_keys();
+        save_setting('movable_action_buttons', movable_action_buttons);
+        $('#move_action_buttons_switch').prop('checked',movable_action_buttons);
+        set_move_action_buttons_label();
+    });
+
+    $('#move_action_buttons_switch').prop('checked',movable_action_buttons);
+
+    let set_move_action_buttons_label=()=>{
+        $('#move_action_buttons_label').html(
+            movable_action_buttons ? 
+            `Once created, you can <span>move any 'action button' by dragging</span>… A <span>long press will enter 'edit mode'</span>… While 'moveable action buttons' is switched on, <span>scripts can not detect release</span> state (to allow this, you must disable the long press gesture by turning 'moveable action buttons' off)`
+            :
+            `All <span>'action button' positions are now locked</span>… <span>scripts are able to trigger actions when the button is released</span>… <span>long press edit mode is disabled</span> (instead use the <span>+</span> from the top menu bar and choose any buttons from the list to edit)`
+        );
+        $('#move_action_buttons_label_settings').html(
+            movable_action_buttons ? 
+            `long press to enter edit mode. movable by dragging. action scripts are unable to detect buttons release state.`
+            :
+            `action button positions locked. action scripts can detect release state. Long press edit gesture disabled, use <span>+</span> from the top menu bar and choose any buttons from list to edit`
+        );
+    }
+    set_move_action_buttons_label();
+    $('#move_action_buttons_switch').change( 
+        ()=>{
+                movable_action_buttons=!movable_action_buttons;
+                set_move_action_buttons_label();
+                install_custom_keys();
+                movable_action_buttons_in_settings_switch.prop('checked', movable_action_buttons);
+                save_setting('movable_action_buttons', movable_action_buttons);
+            }
+    ); 
+
+    //----
 let set_game_controller_buttons_choice = function (choice) {
     $(`#button_game_controller_type_choice`).text('button count='+choice);
     joystick_button_count=choice;
@@ -2498,16 +2645,18 @@ $('#choose_keycap_size a').click(function ()
     $("#modal_settings").focus();
 });
 //--
-set_keyboard_bottom_margin(load_setting('keyboard_bottom_margin', '0px'));
+set_keyboard_bottom_margin(load_setting('keyboard_bottom_margin_', 'auto'));
 function set_keyboard_bottom_margin(keyboard_bottom_margin) {
-    document.querySelector(':root').style.setProperty('--keyboard_bottom_margin', keyboard_bottom_margin);
+    document.querySelector(':root').style.
+        setProperty('--keyboard_bottom_margin', 
+            keyboard_bottom_margin==='auto' ? 'env(safe-area-inset-bottom)':keyboard_bottom_margin);
     $("#button_keyboard_bottom_margin").text(`keyboard bottom margin=${keyboard_bottom_margin}`);
 }
 $('#choose_keyboard_bottom_margin a').click(function () 
 {
     var keyboard_bottom_margin=$(this).text();
     set_keyboard_bottom_margin(keyboard_bottom_margin);
-    save_setting('keyboard_bottom_margin',keyboard_bottom_margin);
+    save_setting('keyboard_bottom_margin_',keyboard_bottom_margin);
     $("#modal_settings").focus();
 });
 //----
@@ -2630,6 +2779,27 @@ $(`#choose_display a`).click(function ()
 
 //----------
 
+activity_monitor_switch
+
+activity_monitor_switch = $('#activity_monitor_switch');
+set_activity_monitor = function(value){
+    if(value)
+    {
+        show_activity();
+    }
+    else
+    {
+        hide_activity(); 
+    }
+    activity_monitor_switch.prop('checked', value);
+}    
+set_activity_monitor(load_setting('activity_monitor', false));
+activity_monitor_switch.change( function() {
+    
+    save_setting('activity_monitor', this.checked);
+    set_activity_monitor(this.checked);
+});
+//----------
     pixel_art_switch = $('#pixel_art_switch');
     set_pixel_art = function(value){
         if(value)
@@ -3033,7 +3203,7 @@ $('.layer').change( function(event) {
     }
 
 
-    running=true;
+    running=false;
     emulator_currently_runs=false;
     $("#button_run").click(function() {
         hide_all_tooltips();
@@ -3064,7 +3234,8 @@ $('.layer').change( function(event) {
         check_wake_lock();        
         //document.getElementById('canvas').focus();
     });
-
+    
+    $("#button_ff").click(()=> action('toggle_warp'));
 
     $('#modal_file_slot').on('hidden.bs.modal', function () {
         $("#filedialog").val(''); //clear file slot after file has been loaded
@@ -3088,28 +3259,30 @@ $('.layer').change( function(event) {
         var execute_load = async function(drive){
             var filetype = wasm_loadfile(file_slot_file_name, file_slot_file, drive);
 
-            //if it is a disk from a multi disk zip file, apptitle should be the name of the zip file only
-            //instead of disk1, disk2, etc....
-            if(last_zip_archive_name !== null)
+            if(auto_selecting_app_title)
             {
-                global_apptitle = last_zip_archive_name;
-            }
-            else
-            {
-                global_apptitle = file_slot_file_name;
-            }
-
-            get_custom_buttons(global_apptitle, 
-                function(the_buttons) {
-                    custom_keys = the_buttons;
-                    for(let param_button of call_param_buttons)
-                    {
-                        custom_keys.push(param_button);
-                    }
-                    install_custom_keys();
+                //if it is a disk from a multi disk zip file, apptitle should be the name of the zip file only
+                //instead of disk1, disk2, etc....
+                if(last_zip_archive_name !== null)
+                {
+                    global_apptitle = last_zip_archive_name;
                 }
-            );
+                else
+                {
+                    global_apptitle = file_slot_file_name;
+                }
 
+                get_custom_buttons(global_apptitle, 
+                    function(the_buttons) {
+                        custom_keys = the_buttons;
+                        for(let param_button of call_param_buttons)
+                        {
+                            custom_keys.push(param_button);
+                        }
+                        install_custom_keys();
+                    }
+                );
+            }
             if(call_param_dialog_on_disk == false)
             {//loading is probably done by scripting
             }
@@ -3184,7 +3357,7 @@ $('.layer').change( function(event) {
                 wasm_eject_disk("dh"+this.id.at(-1));
                 $("#button_eject_hd"+this.id.at(-1)).hide();
             });
-        }   
+        }
     });
 
     document.getElementById('button_take_snapshot').onclick = function() 
@@ -3223,6 +3396,8 @@ $('.layer').change( function(event) {
             let d64_buffer = new Uint8Array(Module.HEAPU8.buffer, d64_obj.address, d64_obj.size);
             let filebuffer = d64_buffer.slice(0,d64_obj.size);
             let blob_data = new Blob([filebuffer], {type: 'application/octet-binary'});
+            Module._wasm_delete_disk();
+            
             const url = window.URL.createObjectURL(blob_data);
             const a = document.createElement('a');
             a.style.display = 'none';
@@ -3246,6 +3421,8 @@ $('.layer').change( function(event) {
             let d64_buffer = new Uint8Array(Module.HEAPU8.buffer, d64_obj.address, d64_obj.size);
             let filebuffer = d64_buffer.slice(0,d64_obj.size);
             let blob_data = new Blob([filebuffer], {type: 'application/octet-binary'});
+            Module._wasm_delete_disk();
+
             const url = window.URL.createObjectURL(blob_data);
             const a = document.createElement('a');
             a.style.display = 'none';
@@ -3266,8 +3443,8 @@ $('.layer').change( function(event) {
     $('#button_save_snapshot').click(async function() 
     {       
         let app_name = $("#input_app_title").val();
-        wasm_take_user_snapshot();
-        var snapshot_json= wasm_pull_user_snapshot_file();
+        
+        var snapshot_json= wasm_take_user_snapshot();
         var snap_obj = JSON.parse(snapshot_json);
 //        var ptr=wasm_pull_user_snapshot_file();
 //        var size = wasm_pull_user_snapshot_file_size();
@@ -3279,32 +3456,6 @@ $('.layer').change( function(event) {
         $("#modal_take_snapshot").modal('hide');
         //document.getElementById('canvas').focus();
     });
-
-/*
-    var delete_cache = () =>{
-    caches.keys().then(keys => {
-        console.log('opening cache:'+keys);
-        return Promise.all(keys
-            .map(key => {
-                caches.open(key).then(function(cache) { 
-                    cache.keys().then(function(cached_requests) { 
-                      for(req_in_cache of cached_requests)
-                      {
-                        //console.log(req_in_cache.url);
-                        if(req_in_cache.url.match('/webservice/')!= null)
-                        {
-                           console.log('delete -> '+req_in_cache.url); 
-                           cache.delete(req_in_cache);
-                        } 
-                      }
-                    });
-                });
-            })
-        );
-    });
-    }
-    delete_cache();
-*/    
 
     set_color_palette(load_setting('color_palette', 'color'));
     function set_color_palette(color_palette) {
@@ -3319,6 +3470,95 @@ $('.layer').change( function(event) {
         $("#modal_settings").focus();
     });
 
+    //--
+    const speed_percentage_text =`Execute the number of frames per host refresh needed to match <span>{0}</span> of the original Amiga's speed.
+
+The PAL Amiga refreshes at 50.080128 Hz, which doesn't match the refresh rates of most modern monitors. Similarly, the NTSC Amiga runs at 59.94 Hz, which is also slightly off from today's standard.
+<br>
+This discrepancy can lead to stuttering or jumpy movement, depending on the content being displayed. <br><br> For a smoother video output, consider enabling the <span>vsync</span> option. Vsync synchronizes the emulation with your display’s refresh rate, resulting in smoother visuals by adjusting the Amigas's emulation speed to match the monitor’s refresh rate.
+    `;
+    const vsync_text=" Video output is smoother when using <span>vsync</span>. However, depending on your monitor's refresh rate, the resulting speed may not be exactly 100% of the original Amiga's speed.";
+    speed_text={
+        "every 2nd vsync": "Render one Amiga frame every second vsync."+vsync_text,
+        "vsync":"Render exactly one Amiga frame on vsync."+vsync_text,
+        "2 frames on vsync":"Render two Amiga frames on vsync."+vsync_text,
+        "50%":`<span>slow motion</span> ${speed_percentage_text.replace("{0}","50%")}`,
+        "75%":`<span>slow motion</span> ${speed_percentage_text.replace("{0}","75%")}`,
+        "100%":`<span>original speed</span> ${speed_percentage_text.replace("{0}","100%")}`,
+        "120%":`<span>fast</span> ${speed_percentage_text.replace("{0}","120%")}`,
+        "160%":`<span>fast</span> ${speed_percentage_text.replace("{0}","160%")}`,
+        "200%":`<span>very fast</span> ${speed_percentage_text.replace("{0}","200%")}`
+    }
+
+    current_speed=100;
+    set_speed = function (new_speed) {
+        $("#button_speed").text("speed & frame sync = "+new_speed);
+        $('#speed_text').html(speed_text[new_speed]);
+
+        selected_speed = new_speed.replaceAll("%","").replaceAll(" ","");
+        if(selected_speed.includes("vsync"))
+        {
+            let map = {"every2ndvsync":-2,"vsync":1,"2framesonvsync":2};
+            selected_speed=map[selected_speed];
+        }
+
+        if(selected_speed == 100)
+            $('#button_speed_toggle').hide();
+        else
+            $('#button_speed_toggle').show();
+ 
+        current_speed=100;
+        $('#button_speed_toggle').click();
+    }
+    set_speed("100%");
+    $('#choose_speed a').click(function () 
+    {
+        selected_speed=$(this).text();
+        set_speed(selected_speed);
+        $("#modal_settings").focus();
+    });
+    
+    $('#button_speed_toggle').click(function () 
+    {
+        if(current_speed==100)
+            current_speed=selected_speed;    
+        else
+            current_speed=100;
+     
+        $('#button_speed_toggle').html(
+            `
+        <div>
+            <svg xmlns="http://www.w3.org/2000/svg" style="margin-top:-5px" width="1.6em" height="1.6em" fill="currentColor" class="bi bi-speedometer" viewBox="0 0 16 16">
+                <path style='opacity:${current_speed == 100 ? 1:1}'  d="M8 2a.5.5 0 0 1 .5.5V4a.5.5 0 0 1-1 0V2.5A.5.5 0 0 1 8 2M3.732 3.732a.5.5 0 0 1 .707 0l.915.914a.5.5 0 1 1-.708.708l-.914-.915a.5.5 0 0 1 0-.707M2 8a.5.5 0 0 1 .5-.5h1.586a.5.5 0 0 1 0 1H2.5A.5.5 0 0 1 2 8m9.5 0a.5.5 0 0 1 .5-.5h1.5a.5.5 0 0 1 0 1H12a.5.5 0 0 1-.5-.5m.754-4.246a.39.39 0 0 0-.527-.02L7.547 7.31A.91.91 0 1 0 8.85 8.569l3.434-4.297a.39.39 0 0 0-.029-.518z"/>
+                <path style='opacity:${current_speed == 100 ? 1:1}' fill-rule="evenodd" d="M6.664 15.889A8 8 0 1 1 9.336.11a8 8 0 0 1-2.672 15.78zm-4.665-4.283A11.95 11.95 0 0 1 8 10c2.186 0 4.236.585 6.001 1.606a7 7 0 1 0-12.002 0"/>
+            </svg>
+            <div style="font-size: x-small;position: absolute;top: -2px;width:44px;text-align:center;margin-left: -11px;">
+            ${current_speed>4?'&nbsp;'+current_speed+'%': current_speed<0?'&frac12;vsync':current_speed==1?'vsync':current_speed+'vsync' }
+            </div>
+            <div id="host_fps" style="font-size: xx-small;position: absolute;top: 32px;width:44px;text-align:center;margin-left: -11px;">
+            </div>
+        </div>
+          `
+        );
+
+        wasm_configure("OPT_AMIGA_SPEED_BOOST", 
+            current_speed.toString());
+//        $("#modal_settings").focus();
+    });
+
+//--
+    set_run_ahead = function (run_ahead) {
+        $("#button_run_ahead").text("run ahead = "+run_ahead);
+        wasm_configure("OPT_EMU_RUN_AHEAD", 
+            run_ahead.toString().replace("frames","").replace("frame",""));
+    }
+    set_run_ahead("0 frame");
+    $('#choose_run_ahead a').click(function () 
+    {
+        var run_ahead=$(this).text();
+        set_run_ahead(run_ahead);
+        $("#modal_settings").focus();
+    });
 //---------- update management --------
 
     set_settings_cache_value = async function (key, value)
@@ -3744,9 +3984,20 @@ $('.layer').change( function(event) {
    }, false);
 
 
-   document.getElementById('button_fetch_open_roms').addEventListener("click", function(e) {
-       fetchOpenROMS();
-   }, false);
+
+   $(`#button_fetch_open_roms > div`).click(function (event) 
+   {
+       let choice=$(this).html();
+       if(choice.includes("AROS"))
+       {
+        fetchOpenROMS("aros");
+       }
+       else if(choice.includes("emutos"))       
+       {
+        fetchOpenROMS("emutos");
+       }
+   });
+
 
    
    var bindROMUI = function (id_dropzone, id_delete, id_local_storage) 
@@ -3910,7 +4161,7 @@ $('.layer').change( function(event) {
             bind_custom_key();    
         });
 
-        bind_custom_key = function () {
+        bind_custom_key = async function () {
             $('#choose_padding a').click(function () 
             {
                  $('#button_padding').text('btn size = '+ $(this).text() ); 
@@ -3933,11 +4184,7 @@ $('.layer').change( function(event) {
                 editor.focus();
             });
 
-            let otherButtons="";
-            if(!create_new_custom_key){
-                otherButtons+=`<a class="dropdown-item" href="#" id="choose_new">&lt;new&gt;</a>`;
-            }
-                        
+            let otherButtons=`<a class="dropdown-item ${create_new_custom_key?"active":""}" href="#" id="choose_new">&lt;new&gt;</a>`;
             for(let otherBtn of custom_keys)
             {
                 let keys = otherBtn.key.split('+');
@@ -3948,7 +4195,7 @@ $('.layer').change( function(event) {
                     ${html_encode(key)}
                     </div>`;
                 }
-                otherButtons+=`<a class="dropdown-item" href="#" id="choose_${otherBtn.id}">
+                otherButtons+=`<a class="dropdown-item ${!create_new_custom_key &&haptic_touch_selected.id == 'ck'+otherBtn.id ? 'active':''}" href="#" id="choose_${otherBtn.id}">
                 <div style="display:flex;justify-content:space-between">
                     <div>${html_encode(otherBtn.title)}</div>
                     <div style="display:flex;margin-left:0.3em;" 
@@ -3956,25 +4203,100 @@ $('.layer').change( function(event) {
                         ${key_display}
                     </div>
                 </div></a>`;
-             }
+            }
             
+            group_list = await stored_groups();
+            group_list = group_list.filter((g)=> g !== '__global_scope__');
+            if(!group_list.includes(global_apptitle))
+            {
+                group_list.push(global_apptitle);
+            }
+            other_groups=``;
+            for(group_name of group_list)
+            {   
+                other_groups+=`
+            <option ${group_name === global_apptitle?"selected":""} value="${group_name}">${group_name}</option>
+            `;
+            }
 
-            $("#other_buttons").html(`
+            $('#select_other_group').tooltip('hide');
+
+            if($("#other_buttons").html().length==0)
+            {
+                $("#other_buttons").html(`
                 <div class="dropdown">
                     <button id="button_other_action" class="ml-4 py-0 btn btn-primary dropdown-toggle text-right" type="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                     list (${custom_keys.length})
                     </button>
-                    <div id="choose_action" class="dropdown-menu dropdown-menu-right" aria-labelledby="dropdownMenuButton">
+                    <div id="choose_action" style="min-width:250px" class="dropdown-menu dropdown-menu-right" aria-labelledby="dropdownMenuButton">
+                    
+                    <div style="width:100%;display:flex;justify-content:center">
+                        <select onclick="event.stopPropagation();" id="select_other_group" 
+                            style="width:95%"
+                            class="custom-select" data-placement="left" data-toggle="tooltip" title="action button group">
+                        ${other_groups}
+                        </select>
+                    </div>
+                    <div id="other_buttons_content">
                     ${otherButtons}
                     </div>
-                </div>`);
-            $("#button_other_action").prop('disabled',custom_keys.length==0);
+                    <div class="mt-3 px-2" style="width:100%;display: grid;grid-template-columns: 1.5fr 1fr;">
+                    <button type="button" id="button_delete_group" class="btn btn-danger justify-start">delete group</button>
+                    <button type="button" id="button_new_group" class="btn btn-primary justify-end" style="grid-column:2/2">+ group</button>
+                    </div>
+
+                    </div>
+                </div>`
+                );
+
+                document.getElementById("button_delete_group").addEventListener("click",
+                    (e)=>{
+                        e.stopPropagation();
+                        if(confirm(`delete all actions specific to group ${global_apptitle}?`))
+                        {
+                            delete_button_group(global_apptitle);
+                            switch_to_other_group(default_app_title);                       
+                        }    
+                    }, false
+                );
+                document.getElementById("button_new_group").addEventListener("click",
+                    (e)=>{
+                        e.stopPropagation();    
+                        let new_group_name = prompt(`group name`);
+                        if(new_group_name!==null)
+                        {
+                            save_new_empty_group(new_group_name);
+                            switch_to_other_group(new_group_name);
+                        }
+                    }, false
+                );
+                document.getElementById('select_other_group').onchange = function() {
+                    let title=document.getElementById('select_other_group').value; 
+                    switch_to_other_group(title)
+                }
+            }
+            else
+            {
+                $("#button_other_action").html(`list (${custom_keys.length})`);
+                $("#other_buttons_content").html(otherButtons);
+                $("#select_other_group").html(other_groups);
+            }
+
+            //dont show delete group when on default group and no actions in it
+            if(otherButtons.length===0 && global_apptitle === default_app_title)
+                $("#button_delete_group").hide();
+            else
+                $("#button_delete_group").show();
+
 
             $('#choose_action a').click(function () 
             {
                 let btn_id = this.id.replace("choose_","");
-                if(btn_id == "new")
+                if(btn_id == "new"){
+                    if(create_new_custom_key)
+                        return;
                     create_new_custom_key=true;
+                }
                 else
                 {
                     create_new_custom_key=false;
@@ -3985,6 +4307,27 @@ $('.layer').change( function(event) {
                 bind_custom_key();
                 reset_validate();
             });
+
+
+            switch_to_other_group=(title)=>
+            {
+                global_apptitle = title; 
+             
+                get_custom_buttons(global_apptitle, 
+                    function(the_buttons) {
+                        custom_keys = the_buttons;
+                        for(let param_button of call_param_buttons)
+                        {
+                            custom_keys.push(param_button);
+                        }
+
+                        create_new_custom_key=true;
+                        
+                        install_custom_keys();
+                        bind_custom_key();
+                    }
+                );
+            }
 
             reset_validate();
             if(create_new_custom_key)
@@ -4006,7 +4349,9 @@ $('.layer').change( function(event) {
             {
                 var btn_def = custom_keys.find(el=> ('ck'+el.id) == haptic_touch_selected.id);
 
-                $('#button_reset_position').prop('disabled', btn_def.currentX==0 && btn_def.currentY==0);
+                $('#button_reset_position').prop('disabled', 
+                    btn_def.currentX !== undefined &&
+                    btn_def.currentX==0 && btn_def.currentY==0);
      
                 set_script_language(btn_def.lang);
                 $('#input_button_text').val(btn_def.title);
@@ -4026,7 +4371,6 @@ $('.layer').change( function(event) {
                 button_delete_shortcut.prop('disabled',btn_def.key == "");
                 $('#button_padding').prop('disabled', btn_def.title=='');
                 $('#button_opacity').prop('disabled', btn_def.title=='');
-     
                 //show errors
                 validate_action_script();
             }
@@ -4052,7 +4396,6 @@ $('.layer').change( function(event) {
                 $('#check_app_scope').change( set_scope_label ); 
             }
 
-            
             if(is_running())
             {
                 wasm_halt();
@@ -4109,7 +4452,7 @@ $('.layer').change( function(event) {
             $('#add_timer_action a').click(on_add_action);
             
             //system action
-            var list_actions=['toggle_run', 'take_snapshot', 'restore_last_snapshot', 'swap_joystick', 'keyboard', 'fullscreen', 'menubar', 'pause', 'run', 'clipboard_paste'];
+            var list_actions=['toggle_run','toggle_warp','take_snapshot', 'restore_last_snapshot', 'swap_joystick', 'keyboard', 'fullscreen', 'menubar', 'pause', 'run', 'clipboard_paste', 'warp_always', 'warp_never', 'warp_auto', 'activity_monitor', 'toggle_action_buttons','toggle_speed'];
             html_action_list='';
             list_actions.forEach(element => {
                 html_action_list +='<a class="dropdown-item" href="#">'+element+'</a>';
@@ -4204,7 +4547,8 @@ release_key('ControlLeft');`;
                             event.stopPropagation();
                             return false;
                         }
-                        if (!cm.state.completionActive && 
+                        if (!cm.state.completionActive &&
+                            event.key !== undefined &&
                             event.key.length == 1  &&
                             event.metaKey == false && event.ctrlKey == false &&
                             event.key != ';' && event.key != ' ' && event.key != '(' 
@@ -4346,8 +4690,10 @@ release_key('ControlLeft');`;
                 }
                 custom_keys.push(new_button);
 
-                $('#lock_action_button_switch').prop('checked', false);
-                lock_action_button=false;
+                movable_action_buttons=true;
+                $('#movable_action_buttons_in_settings_switch').prop('checked', movable_action_buttons);
+                $('#move_action_buttons_switch').prop('checked',movable_action_buttons);
+
 
                 install_custom_keys();
                 create_new_custom_key=false;
@@ -4448,18 +4794,23 @@ release_key('ControlLeft');`;
             {
                 btn_html += 'opacity:'+element.opacity+' !important;';
             }
-
+            if(movable_action_buttons)
+            {
+                btn_html += 'box-shadow: 0.2em 0.2em 0.6em rgba(0, 0, 0, 0.9);';
+            }
 
             btn_html += 'touch-action:none">'+html_encode(element.title)+'</button>';
 
             $('#div_canvas').append(btn_html);
             action_scripts["ck"+element.id] = element.script;
 
-            if(lock_action_button == true)
+            let custom_key_el = document.getElementById(`ck${element.id}`);
+            if(!movable_action_buttons)
             {//when action buttons locked
              //process the mouse/touch events immediatly, there is no need to guess the gesture
                 let action_function = function(e) 
-                {   
+                {
+                    e.stopImmediatePropagation();
                     e.preventDefault();
                     var action_script = action_scripts['ck'+element.id];
 
@@ -4473,16 +4824,27 @@ release_key('ControlLeft');`;
                 };
                 let mark_as_released = function(e) 
                 {
+                    e.stopImmediatePropagation();
+                    e.preventDefault();
                     get_running_script(element.id).action_button_released = true;
                 };
 
-                $('#ck'+element.id).mousedown(action_function).on({'touchstart' : action_function});
-                $('#ck'+element.id).mouseup(mark_as_released).on({'touchend' : mark_as_released});
+                custom_key_el.addEventListener("pointerdown", (e)=>{
+                    custom_key_el.setPointerCapture(e.pointerId);
+                    action_function(e);
+                },false);
+                custom_key_el.addEventListener("pointerup", mark_as_released,false);
+                custom_key_el.addEventListener("lostpointercapture", mark_as_released);
+                custom_key_el.addEventListener("touchstart",(e)=>e.stopImmediatePropagation());
+
             }
             else
             {
-                $('#ck'+element.id).click(function() 
-                {       
+                add_pencil_support(custom_key_el);
+                custom_key_el.addEventListener("click",(e)=>
+                {
+                    e.stopImmediatePropagation();
+                    e.preventDefault();
                     //at the end of a drag ignore the click
                     if(just_dragged)
                         return;
@@ -4496,7 +4858,7 @@ release_key('ControlLeft');`;
 
         });
 
-        if(lock_action_button==false)
+        if(movable_action_buttons)
         {
             install_drag();
         }
@@ -4539,13 +4901,9 @@ release_key('ControlLeft');`;
             yOffset["ck"+element.id] = element.currentY;
         });
 
-        container.addEventListener("touchstart", dragStart, false);
-        container.addEventListener("touchend", dragEnd, false);
-        container.addEventListener("touchmove", drag, false);
-
-        container.addEventListener("mousedown", dragStart, false);
-        container.addEventListener("mouseup", dragEnd, false);
-        container.addEventListener("mousemove", drag, false);
+        container.addEventListener("pointerdown", dragStart, false);
+        container.addEventListener("pointerup", dragEnd, false);
+        container.addEventListener("pointermove", drag, false);
     }
 
 
@@ -4580,6 +4938,8 @@ release_key('ControlLeft');`;
             initialX = e.clientX - xOffset[e.target.id];
             initialY = e.clientY - yOffset[e.target.id];
         }
+
+        just_dragged=false;
       }
     }
 
@@ -4590,10 +4950,7 @@ release_key('ControlLeft');`;
         if(active)
         {
             var dragTime = Date.now()-timeStart;
-            if(Math.abs(currentX - startX) < 3 &&
-                Math.abs(currentY - startY) < 3 &&
-                dragTime > 300
-                )
+            if(!just_dragged && dragTime > 300)
             {
                 haptic_active=true;
                 haptic_touch_selected= e.target;
@@ -4622,7 +4979,6 @@ release_key('ControlLeft');`;
             ckdef.currentY = 0;
         }
 
-        just_dragged = ckdef.currentX != currentX || ckdef.currentY != currentY;
         if(just_dragged)
         {
             ckdef.currentX = currentX;
@@ -4654,10 +5010,18 @@ release_key('ControlLeft');`;
           currentY = e.clientY - initialY;
         }
 
-        xOffset[e.target.id] = currentX;
-        yOffset[e.target.id] = currentY;
+        if(!just_dragged)
+        {
+            const magnetic_force=5.25;
+            just_dragged = Math.abs(xOffset[e.target.id]-currentX)>magnetic_force || Math.abs(yOffset[e.target.id]-currentY)>magnetic_force;
+        }
+        if(just_dragged)
+        { 
+            xOffset[e.target.id] = currentX;
+            yOffset[e.target.id] = currentY;
 
-        setTranslate(currentX, currentY, dragItem);
+            setTranslate(currentX, currentY, dragItem);
+        }
       }
     }
 
@@ -4811,3 +5175,307 @@ function hide_all_tooltips()
     $('[data-toggle="tooltip"]').tooltip('hide');
 }
     
+add_pencil_support = (element) => {
+    let isPointerDown = false;
+    let pointerId = null;
+
+    element.addEventListener('pointerdown', (event) => {
+        if (event.pointerType === 'pen') {
+            isPointerDown = true;
+            pointerId = event.pointerId;
+        }
+    });
+
+    element.addEventListener('pointerup', (event) => {
+        if (isPointerDown && event.pointerId === pointerId) {
+            isPointerDown = false;
+            pointerId = null;
+
+            const clickEvent = new MouseEvent('click', {
+                bubbles: true,
+                cancelable: true,
+            });
+
+            element.focus();
+            element.dispatchEvent(clickEvent);      
+        }
+    });
+
+    element.addEventListener('pointercancel', (event) => {
+        if (event.pointerType === 'pen') {
+            isPointerDown = false;
+            pointerId = null;
+        }
+    });
+}
+function add_pencil_support_to_childs(element) {
+    element.childNodes.forEach(child => {
+        if (child.nodeType === Node.ELEMENT_NODE)
+          add_pencil_support(child);
+    });  
+}
+function add_pencil_support_for_elements_which_need_it()
+{
+    let elements_which_need_pencil_support=
+        ["button_show_menu","button_run", "button_reset", "button_take_snapshot",
+        "button_snapshots", "button_keyboard", "button_custom_key", "drop_zone",
+        "button_fullscreen", "button_settings", "port1", "port2" ]
+    for(let element_id of elements_which_need_pencil_support)
+    {
+        add_pencil_support(document.getElementById(element_id));
+    }
+}
+
+function copy_to_clipboard(element) {
+    var textToCopy = element.innerText;
+    navigator.clipboard.writeText(textToCopy).then(function() {
+        alert(`copied to clipboard: ${textToCopy}`);
+    }, function(err) {
+        console.error(err);
+    });
+}
+
+//--- activity monitors and dma bus visualisation
+let activity_intervall=null;
+
+function add_monitor(id, label, splitted=false)
+{
+    $("#activity").append(
+    `
+        <div class="monitor_hull">
+            <div id="monitor_${id}" class="monitor"></div>
+            <div class="monitor_label">${label}</div>
+        <div>
+    `
+    );
+
+    color=[];
+    color.copper={start: '51,51,0', end:'255,255,0'}
+    color.blitter={start: `50,${parseInt('cc',16)*0.2},0`, end:`${parseInt('ff',16)},${parseInt('cc',16)},0`}
+    color.disk={start: `0,51,0`, end:`0,255,0`}
+    color.audio={start: '50,0,50', end:'255,0,255'}
+    color.sprite={start: `0,${parseInt('88',16)*0.2},51`, end:`0,${parseInt('88',16)},255`}
+    color.bitplane={start: '0,50,50', end:'0,255,255'}
+    color.CPU={start: '50,50,50', end:'255,255,255'}
+
+
+    document.querySelector(`#monitor_${id}`).addEventListener('click', 
+        (e)=>{
+            let id=e.currentTarget.id.replace('monitor_','');
+            if(id.includes("Ram") || id.includes("Rom"))
+                id="CPU";
+            
+            if(dma_channels[id] !==true )
+            {
+                e.currentTarget.style.setProperty("--color_start",color[id].start);
+                e.currentTarget.style.setProperty("--color_end",color[id].end);   
+            }
+            else
+            {
+                e.currentTarget.style.setProperty("--color_start",'50,50,50');
+                e.currentTarget.style.setProperty("--color_end",'200,200,200');   
+            }
+            dma_debug(id);
+        }
+    );
+    dma_channel_history[id] = [];
+    dma_channel_history_values[id] = [];
+    for(let i=0;i<20;i++)
+    {
+        if(splitted==false)
+        {
+            $(`#monitor_${id}`).append(
+                `<div id="${id}_bar_${i}" class="bar" 
+                  style="--barval:0;grid-column:${i+1};"></div>`
+            );
+            dma_channel_history[id].push(document.querySelector(`#${id}_bar_${i}`));
+            dma_channel_history_values[id].push(0);
+        }
+        else
+        {
+            $(`#monitor_${id}`).append(
+                `<div id="${id}_bar_${i}_upper" class="bar_splitted_upper" 
+                  style="--barval:0;grid-column:${i+1};"></div>`
+            );
+            $(`#monitor_${id}`).append(
+                `<div id="${id}_bar_${i}_lower" class="bar_splitted_lower" 
+                  style="--barval:0;grid-column:${i+1};"></div>`
+            );
+            dma_channel_history[id].push(
+                [
+                    document.querySelector(`#${id}_bar_${i}_upper`),
+                    document.querySelector(`#${id}_bar_${i}_lower`)
+                ]
+            );
+            dma_channel_history_values[id].push([0,0]);
+        }
+        
+    }
+
+    const activity_id = {
+        copper: 0,
+        blitter: 1,
+        disk: 2,
+        audio: 3,
+        sprite: 4,
+        bitplane: 5,
+        chipRam: 6,
+        slowRam: 7,
+        fastRam: 8,
+        kickRom: 9,
+        waveformL:10, waveformR:11
+    }
+
+    if(!activity_intervall)
+    {
+        activity_intervall = setInterval(()=>{
+            if(!running) return;
+            
+            for(id in dma_channels){
+                if(dma_channel_history[id]===undefined)
+                    continue;
+                let value=_wasm_activity(activity_id[id]);
+                value = (Math.log(1+19*value) / Math.log(20)) * 100;
+                value = value>100 ? 100: Math.round(value);
+
+                if(Array.isArray(dma_channel_history[id][0]))
+                {
+                    for(let i=0;i<20-1;i++)
+                    {
+                        let newer_upper_value=dma_channel_history_values[id][i+1][0];
+                        if(dma_channel_history_values[id][i][0] !==newer_upper_value)
+                        {
+                            dma_channel_history[id][i][0].style.setProperty("--barval", newer_upper_value);
+                            dma_channel_history_values[id][i][0]=newer_upper_value;
+                        }
+
+                        let newer_lower_value=dma_channel_history_values[id][i+1][1];
+                        if(dma_channel_history_values[id][i][1] !==newer_lower_value)
+                        {
+                            dma_channel_history[id][i][1].style.setProperty("--barval", newer_lower_value);
+                            dma_channel_history_values[id][i][1]=newer_lower_value;
+                        }
+                    }
+
+                    if(value !== dma_channel_history_values[id][20-1][0])
+                    {    
+                        dma_channel_history_values[id][20-1][0]= value;           
+                        dma_channel_history[id][20-1][0].style.setProperty("--barval", value);
+                    }
+
+                    value=_wasm_activity(activity_id[id],1);
+                    value = (Math.log(1+19*value) / Math.log(20)) * 100;
+                    value = value>100 ? 100: Math.round(value);    
+                    if(value !== dma_channel_history_values[id][20-1][1])
+                    {         
+                        dma_channel_history_values[id][20-1][1]= value;  
+                        dma_channel_history[id][20-1][1].style.setProperty("--barval", value);
+                    }
+                }
+                else
+                {
+                    for(let i=0;i<20-1;i++)
+                    {
+                        let newer_value = dma_channel_history_values[id][i+1];
+                        if(dma_channel_history_values[id][i] !== newer_value)
+                        {
+                            dma_channel_history[id][i].style.setProperty("--barval", newer_value);
+                            dma_channel_history_values[id][i]=newer_value;
+                        }
+                    }
+                    if(value !== dma_channel_history_values[id][20-1])
+                    {
+                        dma_channel_history_values[id][20-1]= value;
+                        dma_channel_history[id][20-1].style.setProperty("--barval", value);
+                    }
+                }
+            }
+        },400);
+    }
+}
+
+
+function show_activity()
+{
+    $("#activity_help").show();
+
+    wasm_configure_key("DEBUG_CHANNEL0", "0");
+    wasm_configure_key("DEBUG_CHANNEL1", "0");
+    wasm_configure_key("DEBUG_CHANNEL2", "0");
+    wasm_configure_key("DEBUG_CHANNEL3", "0");
+    wasm_configure_key("DEBUG_CHANNEL4", "0");
+    wasm_configure_key("DEBUG_CHANNEL5", "0");
+    wasm_configure_key("DEBUG_CHANNEL6", "0");
+    wasm_configure_key("DEBUG_CHANNEL7", "0");
+
+
+    dma_channels={
+        copper: false,
+        blitter: false,
+        disk:false,
+        audio:false,
+        sprite:false,
+        bitplane:false,
+        chipRam:false,
+        slowRam:false,
+        fastRam:false,
+        kickRom:false,
+
+    };
+
+
+    wasm_configure("DEBUG_ENABLE","1");
+
+    $("#activity").remove();
+    $("body").append(`<div id="activity" class="monitor_grid"></div>`);
+
+    dma_channel_history = [];
+    dma_channel_history_values = [];
+
+    add_monitor("blitter", "Blitter DMA");
+    add_monitor("copper", "Copper DMA");
+    add_monitor("disk", "Disk DMA");
+    add_monitor("audio", "Audio DMA");
+    add_monitor("sprite", "Sprite DMA");
+    add_monitor("bitplane", "Bitplane DMA");
+    add_monitor("chipRam", "CPU (chipRAM)", true);
+    add_monitor("slowRam", "CPU (slowRAM)", true);
+    add_monitor("fastRam", "CPU (fastRAM)", true);
+    add_monitor("kickRom", "CPU (kickROM)", true);
+
+ }
+function hide_activity()
+{
+    wasm_configure("DEBUG_ENABLE","0");
+
+    $("#activity").remove();
+    clearInterval(activity_intervall);
+    activity_intervall=null;
+    $("#activity_help").hide();
+}
+
+function dma_debug(channel)
+{
+/**
+ * activity monitor on => all aktivity monitorings are enabled 
+ * they will be rendered black and white
+ * on touch werden they become colored and the dma bus activity will be visualized (dma debugger)
+ * again touch and they become black white  and dma channel visualisation on that particular channel will be disabled
+ 
+Settings
+ (x) activity monitor
+ (x?) tap on monitor to visualise dma channel
+*/
+    if(channel.includes("Ram") || channel.includes("Rom"))
+        channel="CPU";
+
+
+    if(dma_channels[channel]=== undefined)
+    {
+        dma_channels[channel]=false;
+    }
+
+    dma_channels[channel]=!dma_channels[channel];
+   
+    wasm_configure_key(`DEBUG_CHANNEL${Math.min(6,Object.keys(dma_channels).indexOf(channel)) }`,dma_channels[channel] ? "1" : "0");
+}

@@ -22,9 +22,8 @@
         function FromBase64(str) {
                 return atob(str).split('').map(function (c) { return c.charCodeAt(0); });
         }
-        let file_descriptor={
-                cmd: "load"
-        }
+        let file_descriptor=ssfile;
+        file_descriptor.cmd="load";
         if(ssfile.kickstart_rom_base64 !== undefined)
         {
             file_descriptor.kickstart_rom = Uint8Array.from(FromBase64(ssfile.kickstart_rom_base64));
@@ -32,6 +31,18 @@
         if(ssfile.kickstart_rom_url !== undefined)
         {
             file_descriptor.kickstart_rom = new Uint8Array(await (await fetch(ssfile.kickstart_rom_url)).arrayBuffer());
+        }
+        if(ssfile.kickstart_ext_url !== undefined)
+        {
+            file_descriptor.kickstart_ext = new Uint8Array(await (await fetch(ssfile.kickstart_ext_url)).arrayBuffer());
+        }
+        if(ssfile.kickstart_rom !== undefined)
+        {
+            file_descriptor.kickstart_rom = ssfile.kickstart_rom;
+        }
+        if(ssfile.kickstart_ext !== undefined)
+        {
+            file_descriptor.kickstart_ext = ssfile.kickstart_ext;
         }
 
         if(ssfile.name !== undefined)
@@ -71,7 +82,8 @@
                 if(event.data.msg == "render_run_state")
                 {
                     this.render_run_state(event.data.value);
-                    if(event.data.value == true && this.samesite_file != null)
+                    this.render_warp_state(event.data.is_warping);
+                    if(this.samesite_file != null)
                     {
                         this.inject_samesite_app_into_iframe();
                     }
@@ -79,6 +91,10 @@
                 else if(event.data.msg == "render_current_audio_state")
                 {
                     this.render_current_audio_state(event.data.value);
+                }
+                else if(event.data.msg == "hide_zip_folder")
+                {
+                    $("#btn_zip").hide();
                 }
             });
             this.listens=true;
@@ -130,7 +146,8 @@
 <div id="player_container" style="display:flex;flex-direction:column;">
 <iframe id="vAmigaWeb" width="100%" height="100%" src="${this.vAmigaWeb_url}${params}#${address}">
 </iframe>
-<div style="display: flex"><svg id="stop_icon" class="player_icon_btn" onclick="vAmigaWeb_player.stop_emu_view();return false;" xmlns="http://www.w3.org/2000/svg" width="2.0em" height="2.0em" fill="currentColor" class="bi bi-pause-btn" viewBox="0 0 16 16">
+<div style="display:grid;grid-template-columns: repeat(5, auto) 3fr repeat(3, auto);grid-gap: 0.25em;">
+<svg id="stop_icon" class="player_icon_btn" onclick="vAmigaWeb_player.stop_emu_view();return false;" xmlns="http://www.w3.org/2000/svg" width="2.0em" height="2.0em" fill="currentColor" class="bi bi-pause-btn" viewBox="0 0 16 16">
     <path d="M6.5 5A1.5 1.5 0 0 0 5 6.5v3A1.5 1.5 0 0 0 6.5 11h3A1.5 1.5 0 0 0 11 9.5v-3A1.5 1.5 0 0 0 9.5 5h-3z"/>
     <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm15 0a1 1 0 0 0-1-1H2a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z"/>
 </svg>`;
@@ -144,13 +161,17 @@ if(this.show_reset_icon)
 emuview_html += `<svg  id="toggle_icon" class="player_icon_btn" onclick="vAmigaWeb_player.toggle_run();return false;" xmlns="http://www.w3.org/2000/svg" width="2.0em" height="2.0em" fill="currentColor" class="bi bi-pause-btn" viewBox="0 0 16 16">
 ${this.pause_icon}
 </svg>
+<svg id="btn_toggle_warp" class="player_icon_btn" style="" onclick="vAmigaWeb_player.toggle_warp();return false;" xmlns="http://www.w3.org/2000/svg" width="2em" height="2em" fill="currentColor" class="bi bi-pause-btn" viewBox="0 0 16 16">
+${this.warp_icon}
+</svg>
+
 <svg id="btn_unlock_audio" class="player_icon_btn" onclick="vAmigaWeb_player.toggle_audio();return false;" xmlns="http://www.w3.org/2000/svg" width="2.0em" height="2.0em" fill="currentColor" class="bi bi-pause-btn" viewBox="0 0 16 16">
 ${this.audio_locked_icon}
 </svg>
 <svg id="btn_keyboard" class="player_icon_btn" onclick="vAmigaWeb_player.toggle_keyboard();return false;" xmlns="http://www.w3.org/2000/svg" width="2.0em" height="2.0em" fill="currentColor" class="bi bi-pause-btn" viewBox="0 0 16 16">
 ${this.keyboard_icon}
 </svg>`;
-if(address.toLowerCase().indexOf(".zip")>0)
+if(address.toLowerCase().indexOf(".zip")>0 || this.samesite_file != null && this.samesite_file.name != null && this.samesite_file.name.endsWith(".zip"))
 {
     emuview_html += 
     `<svg id="btn_zip" class="player_icon_btn" style="margin-top:4px;margin-left:auto" onclick="vAmigaWeb_player.open_zip();return false;" xmlns="http://www.w3.org/2000/svg" width="1.5em" height="1.5em" fill="currentColor" class="bi bi-pause-btn" viewBox="0 0 16 16">
@@ -158,7 +179,12 @@ if(address.toLowerCase().indexOf(".zip")>0)
     </svg>`;
 }
 emuview_html += 
-`<svg id="btn_overlay" class="player_icon_btn" style="margin-top:4px;margin-left:auto" onclick="vAmigaWeb_player.toggle_overlay();return false;" xmlns="http://www.w3.org/2000/svg" width="1.5em" height="1.5em" fill="currentColor" class="bi bi-pause-btn" viewBox="0 0 16 16">
+`
+<svg id="btn_activity_monitor" class="player_icon_btn" style="margin-top:4px;margin-left:auto" onclick="vAmigaWeb_player.toggle_activity_monitor();return false;" xmlns="http://www.w3.org/2000/svg" width="1.5em" height="1.5em" fill="currentColor" class="bi bi-pause-btn" viewBox="0 0 16 16">
+${this.activity_icon}
+</svg>
+
+<svg id="btn_overlay" class="player_icon_btn" style="margin-top:4px;margin-left:auto" onclick="vAmigaWeb_player.toggle_overlay();return false;" xmlns="http://www.w3.org/2000/svg" width="1.5em" height="1.5em" fill="currentColor" class="bi bi-pause-btn" viewBox="0 0 16 16">
 ${this.overlay_on_icon}
 </svg>
 <a id="btn_open_in_extra_tab" title="open fullwindow in new browser tab" style="border:none;width:1.5em;margin-top:4px" onclick="vAmigaWeb_player.stop_emu_view();" href="${this.vAmigaWeb_url}${params}#${address}" target="blank">
@@ -231,6 +257,14 @@ ${this.overlay_on_icon}
     keyboard_icon:`<path d="M14 5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h12zM2 4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H2z"/><path d="M13 10.25a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm0-2a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-5 0A.25.25 0 0 1 8.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 8 8.75v-.5zm2 0a.25.25 0 0 1 .25-.25h1.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-1.5a.25.25 0 0 1-.25-.25v-.5zm1 2a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-5-2A.25.25 0 0 1 6.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 6 8.75v-.5zm-2 0A.25.25 0 0 1 4.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 4 8.75v-.5zm-2 0A.25.25 0 0 1 2.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 2 8.75v-.5zm11-2a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-2 0a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-2 0A.25.25 0 0 1 9.25 6h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 9 6.75v-.5zm-2 0A.25.25 0 0 1 7.25 6h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 7 6.75v-.5zm-2 0A.25.25 0 0 1 5.25 6h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 5 6.75v-.5zm-3 0A.25.25 0 0 1 2.25 6h1.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-1.5A.25.25 0 0 1 2 6.75v-.5zm0 4a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm2 0a.25.25 0 0 1 .25-.25h5.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-5.5a.25.25 0 0 1-.25-.25v-.5z"/>`,
     reset_icon:` <path d="M9.71 5.093a.5.5 0 0 1 .79.407v5a.5.5 0 0 1-.79.407L7 8.972V10.5a.5.5 0 0 1-1 0v-5a.5.5 0 0 1 1 0v1.528l2.71-1.935z"/>
   <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm15 0a1 1 0 0 0-1-1H2a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z"/>`,
+    activity_icon: `
+  <path d="M4.5 12a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5zm3 0a.5.5 0 0 1-.5-.5v-4a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-.5.5zm3 0a.5.5 0 0 1-.5-.5v-6a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-.5.5z"/>
+  <path d="M4 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2zm0 1h8a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1"/>`,
+    warp_icon: `
+  <path d="M8.79 5.093A.5.5 0 0 0 8 5.5v1.886L4.79 5.093A.5.5 0 0 0 4 5.5v5a.5.5 0 0 0 .79.407L8 8.614V10.5a.5.5 0 0 0 .79.407l3.5-2.5a.5.5 0 0 0 0-.814z"/>
+  <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2zm15 0a1 1 0 0 0-1-1H2a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1z"/>`,
+    warp_active_icon: `
+  <path d="M0 4v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H2a2 2 0 0 0-2 2m4.271 1.055a.5.5 0 0 1 .52.038L8 7.386V5.5a.5.5 0 0 1 .79-.407l3.5 2.5a.5.5 0 0 1 0 .814l-3.5 2.5A.5.5 0 0 1 8 10.5V8.614l-3.21 2.293A.5.5 0 0 1 4 10.5v-5a.5.5 0 0 1 .271-.445"/>`,
     is_overlay: false,
     toggle_overlay: function () {
         var container = $('#player_container');
@@ -275,6 +309,7 @@ ${this.overlay_on_icon}
         vAmigaWeb.postMessage("button_run()", "*");
     },
     last_run_state:null,
+    last_warp_state:null,
     render_run_state: function (is_running)
     {
         if(this.last_run_state == is_running)
@@ -285,10 +320,30 @@ ${this.overlay_on_icon}
         );
         this.last_run_state = is_running;
     },
+    render_warp_state: function (is_warping)
+    {
+        if(this.last_warp_state == is_warping)
+            return;
+
+        $("#btn_toggle_warp").html(
+            is_warping ? this.warp_active_icon: this.warp_icon 
+        );
+        this.last_warp_state = is_warping;
+    },
     toggle_keyboard: function()
     {			
         var vAmigaWeb = document.getElementById("vAmigaWeb").contentWindow;
-        vAmigaWeb.postMessage({cmd:"script", script:"virtual_keyboard_clipping=false;action('keyboard');"}, "*");
+        vAmigaWeb.postMessage({cmd:"script", script:"action('keyboard')"}, "*");
+    },
+    toggle_activity_monitor: function()
+    {
+        var vAmigaWeb = document.getElementById("vAmigaWeb").contentWindow;
+        vAmigaWeb.postMessage({cmd:"script", script:"action('activity_monitor')"}, "*");
+    },
+    toggle_warp: function()
+    {
+        var vAmigaWeb = document.getElementById("vAmigaWeb").contentWindow;
+        vAmigaWeb.postMessage({cmd:"script", script:"action('toggle_warp')"}, "*");
     },
     toggle_audio: function()
     {			
@@ -333,6 +388,127 @@ ${this.overlay_on_icon}
     exec: function(the_function, the_param) { 
         let function_as_string=`(${the_function.toString()})(${the_param == undefined?'':"'"+the_param+"'"});`;
         this.send_script(function_as_string);  
-    }
+    },
+    registered_setups: {},
+    setup: function(id,setup_config){
+        this.registered_setups[id]=setup_config;
 
+        let the_play=`<svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="bi bi-play-circle" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/><path d="M6.271 5.055a.5.5 0 0 1 .52.038l3.5 2.5a.5.5 0 0 1 0 .814l-3.5 2.5A.5.5 0 0 1 6 10.5v-5a.5.5 0 0 1 .271-.445"/></svg>`;
+        let overlay=document.getElementById(`${id}_overlay`);
+
+        if(setup_config.kickstart_rom_required === undefined)
+        {
+            overlay.innerHTML=`
+            <div style="display:grid;grid-template-columns: repeat(3, 1fr); width:100%;height:100%">
+            <div style="grid-column:1/span3;text-align:end;"></div>
+            <div id="play_button" style="grid-column: 2/2;cursor:pointer"
+                ontouchstart="touched=true"
+                onclick="let touch=(typeof touched!='undefined')?touched:false;touched=false;vAmigaWeb_player.load_setup('${id}', {touch:touch})"
+            >${the_play}</div>
+            <div style="grid-column: 2/2"></div>
+            `;
+            return;
+        }
+        this.loadScript(`${this.vAmigaWeb_url}js/dexie.min.js` , 
+        async function(){
+            var db = new Dexie("kickstarts");
+            db.version(1).stores({
+              kickstart: "id"
+            });
+
+            await db.open();
+            //check if kickstart is in local db
+            let ks = await (db.kickstart.where('id').equals(setup_config.kickstart_rom_required[0]).toArray());
+            
+            if(ks.length==0)
+            {
+                let lock=`<svg xmlns="http://www.w3.org/2000/svg" style="fill:white;width:100%" viewBox="0 0 448 512" ><path d="M400 224h-24v-72C376 68.2 307.8 0 224 0S72 68.2 72 152v72H48c-26.5 0-48 21.5-48 48v192c0 26.5 21.5 48 48 48h352c26.5 0 48-21.5 48-48V272c0-26.5-21.5-48-48-48zm-104 0H152v-72c0-39.7 32.3-72 72-72s72 32.3 72 72v72z"></path></svg>`;
+                overlay.innerHTML=`
+                <input type="file" id="fileInput" style="display:none">
+                <div id="drop_zone" style="display:grid;grid-template-columns: repeat(3, 1fr); width:100%;height:100%;cursor:pointer"
+                    onclick="document.getElementById('fileInput').click()"
+                >
+                  <div style="grid-column:1/span 3;text-align:center">kickstart ${setup_config.kickstart_rom_required} required</div>
+                  <div style="grid-column:2/2">${lock}</div>
+                  <div style="grid-column:1/span3;text-align:center">select kickstart file with a click or drag file into here</div>
+                </div>
+                `;
+                function import_kickstart(file){
+                    const reader = new FileReader();            
+                    reader.onload = function(event) {
+                        const arrayBuffer = event.target.result;
+                        const kick_rom = new Uint8Array(arrayBuffer);
+                        db.kickstart.add({id: setup_config.kickstart_rom_required[0], rom: kick_rom});
+                    };
+            
+                    reader.readAsArrayBuffer(file);
+                    vAmigaWeb_player.setup(id,setup_config);
+                }
+                function handleDrop(event) {
+                    event.preventDefault();
+                    var file = event.dataTransfer.files[0];
+                    import_kickstart(file);
+                }
+                function handleDragOver(event) {
+                    event.preventDefault();
+                }
+                overlay.addEventListener('drop', handleDrop, false);
+                overlay.addEventListener('dragover', handleDragOver, false);
+                document.getElementById('fileInput').addEventListener('change', function(event) {
+                    const file = event.target.files[0];
+                    import_kickstart(file);
+                });
+                return;
+            }
+            
+            if(ks[0].id==setup_config.kickstart_rom_required[0])
+            {
+                vAmigaWeb_player.delete_rom=(rom_id)=>{ 
+                    db.kickstart.delete(rom_id);
+                    vAmigaWeb_player.setup(id,setup_config);
+                }
+                overlay.innerHTML=`
+                <div style="display:grid;grid-template-columns: repeat(3, 1fr); width:100%;height:100%">
+
+                <div style="grid-column:1/span3;text-align:end;" >
+                  <span title="local stored kickstart rom found">kickstart ${setup_config.kickstart_rom_required}</span>
+                  <svg onclick="vAmigaWeb_player.delete_rom(${setup_config.kickstart_rom_required})" style="cursor:pointer" fill="currentColor" height="1.1em" viewBox="0 -7 16 22" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1H2.5zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zM8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7A.5.5 0 0 1 8 5zm3 .5a.5.5 0 0 0-1 0v7a.5.5 0 0 0 1 0v-7z" fill-rule="evenodd"></path></svg>                
+                </div>
+
+                <div id="play_button" style="grid-column: 2/2;cursor:pointer"
+                    ontouchstart="touched=true"
+                    onclick="let touch=(typeof touched!='undefined')?touched:false;touched=false;vAmigaWeb_player.load_setup('${id}', {touch:touch})"
+                >${the_play}</div>
+                <div style="grid-column: 2/2"></div>
+                `;
+                if(setup_config.samesite_file.mount_kickstart_in_dfn !== undefined ||
+                    setup_config.samesite_file.patch_kickstart_into_address !== undefined)
+                {
+                    setup_config.samesite_file.kickemu_rom = ks[0].rom;
+                }
+                else
+                {
+                    setup_config.samesite_file.kickstart_rom = ks[0].rom;
+                }
+            }
+        });
+    },
+    load_setup(setup_name, optional_params={touch:false}){
+        if(window.location.protocol === 'http:')
+        {
+            if (window.confirm(
+`Sound will only play if this page is loaded over a secure HTTPS connection.
+\nWould you like me to reload the page using a secure connection now ?`
+            )) 
+            {
+                window.location.replace('https://' + window.location.host + window.location.pathname + window.location.search);
+            }
+        }
+
+        let element = document.getElementById(setup_name);
+        vAmigaWeb_player.samesite_file=this.registered_setups[setup_name].samesite_file;
+        let config=this.registered_setups[setup_name].config;
+        config.touch=optional_params.touch;
+        vAmigaWeb_player.load(element,encodeURIComponent(JSON.stringify(config)));
+    }
 }

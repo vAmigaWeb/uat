@@ -1,5 +1,5 @@
-const vAmigaWeb_version="2.6.0"; //minimum requirement for snapshot version to be compatible
-const compatible_snapshot_version_format=/^(2[.]6[.]0)$/g
+const vAmigaWeb_version="3.0.0"; //minimum requirement for snapshot version to be compatible
+const compatible_snapshot_version_format=/^(3[.]0[.]0)$/g
 var current_browser_datasource='snapshots';
 var current_browser_command=null;
 
@@ -421,6 +421,11 @@ var collectors = {
                     width=src_data[13+4]*256+ src_data[12+4];
                     height=src_data[17+4]*256+ src_data[16+4];
                 }
+                if(version.startsWith("3"))
+                {
+                    width=src_data[13+4]*256+ src_data[12+4];
+                    height=src_data[17+4]*256+ src_data[16+4];
+                }
                 var ctx = teaser_canvas.getContext("2d");
                 teaser_canvas.width = width;
                 teaser_canvas.height = height;
@@ -532,8 +537,8 @@ var collectors = {
         },
         copy_autosnapshot_to_canvas: function(snapshot_data, canvas){ 
             var ctx = canvas.getContext("2d");
-            canvas.width = snapshot_data[13]*256+ snapshot_data[12];
-            canvas.height = snapshot_data[17]*256+ snapshot_data[16];
+            canvas.width = snapshot_data[13+4]*256+ snapshot_data[12+4];
+            canvas.height = snapshot_data[17+4]*256+ snapshot_data[16+4];
             imgData=ctx.createImageData(canvas.width,canvas.height);
 
             var data = imgData.data;
