@@ -48,8 +48,8 @@ let load_sound = async function(url){
     return audio_buffer;
 } 
 let parallel_playing=0;
-let keyboard_sound_volumne=0.04;
-let play_sound = function(audio_buffer, sound_volumne=0.1){
+let keyboard_sound_volume=0.04;
+let play_sound = function(audio_buffer, sound_volume=0.1){
         if(audio_buffer== null)
         {                 
             load_all_sounds();
@@ -63,7 +63,7 @@ let play_sound = function(audio_buffer, sound_volumne=0.1){
         source.buffer = audio_buffer;
 
         let gain_node = audioContext.createGain();
-        gain_node.gain.value = sound_volumne; 
+        gain_node.gain.value = sound_volume; 
         gain_node.connect(audioContext.destination);
 
         source.addEventListener('ended', () => {
@@ -100,7 +100,7 @@ async function load_all_sounds()
         audio_key_space=await load_sound('sounds/key_space.mp3');
 }
 load_all_sounds();
-
+df0_poll_sound=true;
 
 const load_script= (url) => {
     return new Promise(resolve =>
@@ -465,28 +465,17 @@ function message_handler_queue_worker(msg, data, data2)
     {
         required_roms_loaded=true;
         emulator_currently_runs=true;
+        document.body.setAttribute('warpstate',Module._wasm_is_warping());
     }
     else if(msg == "MSG_PAUSE")
     {
         emulator_currently_runs=false;
+        document.body.setAttribute('warpstate', 0);
     }
     else if(msg === "MSG_WARP")
     {
         let is_warping = Module._wasm_is_warping();
-        $("#button_ff").html(
-            is_warping ?
-            `
-<svg xmlns="http://www.w3.org/2000/svg" width="1.6em" height="1.6em" fill="currentColor" class="bi bi-fast-forward-fill" viewBox="0 0 16 16">
-  <path d="M7.596 7.304a.802.802 0 0 1 0 1.392l-6.363 3.692C.713 12.69 0 12.345 0 11.692V4.308c0-.653.713-.998 1.233-.696z"/>
-  <path d="M15.596 7.304a.802.802 0 0 1 0 1.392l-6.363 3.692C8.713 12.69 8 12.345 8 11.692V4.308c0-.653.713-.998 1.233-.696z"/>
-</svg>`:
-`
-<svg xmlns="http://www.w3.org/2000/svg" width="1.6em" height="1.6em" fill="currentColor" class="bi bi-fast-forward" viewBox="0 0 16 16">
-          <path d="M6.804 8 1 4.633v6.734zm.792-.696a.802.802 0 0 1 0 1.392l-6.363 3.692C.713 12.69 0 12.345 0 11.692V4.308c0-.653.713-.998 1.233-.696z"/>
-          <path d="M14.804 8 9 4.633v6.734zm.792-.696a.802.802 0 0 1 0 1.392l-6.363 3.692C8.713 12.69 8 12.345 8 11.692V4.308c0-.653.713-.998 1.233-.696z"/>
-</svg>
-`
-);
+        document.body.setAttribute('warpstate', is_warping);
         window.parent.postMessage({ msg: 'render_run_state', value: is_running(), is_warping:  is_warping },"*");
     }
     else if(msg == "MSG_VIDEO_FORMAT")
@@ -499,8 +488,9 @@ function message_handler_queue_worker(msg, data, data2)
             play_sound(audio_df_step);
             $("#drop_zone").html(`df${data} ${data2.toString().padStart(2, '0')}`);
         }
-        else if (data==0)
-        {//only for df0: play stepper sound in case of no disk
+        else if (data==0 && df0_poll_sound)
+        {
+            //only for df0: play stepper sound in case of no disk
             play_sound(audio_df_step);
         }
     }
@@ -538,7 +528,11 @@ function message_handler_queue_worker(msg, data, data2)
         $(`#button_OPT_DRIVE_SPEED`).text(`drive speed=${v} (snapshot)`);
 
         v=wasm_get_config_item("CPU.REVISION");
-        $(`#button_OPT_CPU_REVISION`).text(`CPU=680${v}0 (snapshot)`);
+        if(v<=2)
+            $(`#button_OPT_CPU_REVISION`).text(`CPU=680${v}0 (snapshot)`);
+        else
+            $(`#button_OPT_CPU_REVISION`).text(`CPU=fake 030 for Settlers map size 8`);
+        
         v=wasm_get_config_item("CPU.OVERCLOCKING");
         $(`#button_OPT_CPU_OVERCLOCKING`).text(`${Math.round((v==0?1:v)*7.09)} MHz (snapshot)`);
         v=wasm_get_config_item("AGNUS.REVISION");
@@ -1702,7 +1696,7 @@ function InitWrappers() {
     queued_executes=0;
 
     wasm_run = function () {
-        Module._wasm_run();       
+        Module._wasm_run();
         if(do_animation_frame == null)
         {
             execute_amiga_frame=()=>{
@@ -1803,6 +1797,28 @@ function InitWrappers() {
     wasm_get_config_item = Module.cwrap('wasm_get_config_item', 'number', ['string']);
     wasm_get_core_version = Module.cwrap('wasm_get_core_version', 'string');
 
+
+
+    const volumeSlider = document.getElementById('volume-slider');
+    set_volume = (new_volume)=>{
+        const volume = parseFloat(new_volume);
+        current_sound_volume = volume*10; 
+        if(typeof gainNode !== "undefined") 
+            gainNode.gain.value = current_sound_volume;
+        console.log(`Volume set to: ${volume * 100}%`);
+
+        $("#volumetext").text(`sound volume = ${Math.round(volume * 100)}%`)
+        save_setting('master_sound_volume', new_volume);
+    }
+    volumeSlider.addEventListener('input', (event) => {
+        set_volume(event.target.value);
+    });
+ 
+    let loaded_vol=load_setting('master_sound_volume', 0.5);
+    set_volume(loaded_vol);
+    $("#volume-slider").val(loaded_vol);
+
+
     resume_audio=async ()=>{
         try {
             await audioContext.resume();  
@@ -1843,7 +1859,11 @@ function InitWrappers() {
             numberOfInputs: 0,
             numberOfOutputs: 1
         });
-
+        gainNode = audioContext.createGain();
+        gainNode.gain.value = current_sound_volume;
+        worklet_node.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+      
         init_sound_buffer=function(){
             console.log("get wasm sound buffer adresses");
             let sound_buffer_address = wasm_get_sound_buffer_address();
@@ -1898,7 +1918,7 @@ function InitWrappers() {
         worklet_node.port.onmessageerror = (msg) => {
             console.log("audio processor error:"+msg);
         };
-        worklet_node.connect(audioContext.destination);        
+        //worklet_node.connect(audioContext.destination);        
     }
 
     connect_audio_processor_shared_memory= async ()=>{
@@ -1913,8 +1933,8 @@ function InitWrappers() {
         audio_connected=true;
 
         audioContext.onstatechange = () => console.log('Audio Context: state = ' + audioContext.state);
-        let gainNode = audioContext.createGain();
-        gainNode.gain.value = 0.15;
+        gainNode = audioContext.createGain();
+        gainNode.gain.value = current_sound_volume;
         gainNode.connect(audioContext.destination);
         wasm_set_sample_rate(audioContext.sampleRate);
         await audioContext.audioWorklet.addModule('js/vAmiga_audioprocessor_sharedarraybuffer.js');
@@ -2400,6 +2420,7 @@ function InitWrappers() {
     installKeyboard();
     $("#button_keyboard").click(function(){
         setTimeout( scaleVMCanvas, 500);
+        setTimeout( hide_all_tooltips, 1000);
     });
 
 
@@ -2660,16 +2681,16 @@ $('#choose_keyboard_bottom_margin a').click(function ()
     $("#modal_settings").focus();
 });
 //----
-set_keyboard_sound_volumne(load_setting('keyboard_sound_volumne', '50'));
-function set_keyboard_sound_volumne(volumne) {
-    keyboard_sound_volumne = 0.01 * volumne;
-    $("#button_keyboard_sound_volumne").text(`key press sound volumne=${volumne}%`);
+set_keyboard_sound_volume(load_setting('keyboard_sound_volume', '50'));
+function set_keyboard_sound_volume(volume) {
+    keyboard_sound_volume = 0.01 * volume;
+    $("#button_keyboard_sound_volume").text(`key press sound volume=${volume}%`);
 }
-$('#choose_keyboard_sound_volumne a').click(function () 
+$('#choose_keyboard_sound_volume a').click(function () 
 {
-    var sound_volumne=$(this).text();
-    set_keyboard_sound_volumne(sound_volumne);
-    save_setting('keyboard_sound_volumne',sound_volumne);
+    var sound_volume=$(this).text();
+    set_keyboard_sound_volume(sound_volume);
+    save_setting('keyboard_sound_volume',sound_volume);
     $("#modal_settings").focus();
 });
 //----
@@ -2920,7 +2941,11 @@ show_drive_config = (c)=>{
     ${wasm_get_config_item("DRIVE_CONNECT",1)==1?"<span>df1</span>":""} 
     ${wasm_get_config_item("DRIVE_CONNECT",2)==1?"<span>df2</span>":""} 
     ${wasm_get_config_item("DRIVE_CONNECT",3)==1?"<span>df3</span>":""}
-    <br>(kickstart needs a reset to recognize new connected drives)
+    <div class="custom-control custom-switch" style="xxdisplay:inline">
+        <input type="checkbox" class="custom-control-input" id="cb_df0_poll_sound" />
+        <label class="custom-control-label" for="cb_df0_poll_sound">poll sound for df0</label>
+    </div>
+    (kickstart needs a reset to recognize new connected drives)
     `);
 }
 
@@ -2928,6 +2953,12 @@ bind_config_choice("OPT_floppy_drive_count", "floppy drives",['1', '2', '3', '4'
 null,null,null,show_drive_config);
 $('#hardware_settings').append(`<div id="div_drives"style="font-size: smaller" class="ml-3 vbk_choice_text"></div>`);
 show_drive_config();
+df0_poll_sound = load_setting('df0_poll_sound', true);
+$("#cb_df0_poll_sound").prop('checked',df0_poll_sound);
+$("#cb_df0_poll_sound").change( function() {
+    df0_poll_sound=this.checked;
+    save_setting('df0_poll_sound', this.checked);
+});
 
 bind_config_choice("OPT_DRIVE_SPEED", "floppy drive speed",['-1', '1', '2', '4', '8'],'1');
 
@@ -2940,12 +2971,12 @@ bind_config_choice("OPT_SLOW_RAM", "slow ram",['0', '256', '512'],'0', (v)=>`${v
 bind_config_choice("OPT_FAST_RAM", "fast ram",['0', '256', '512','1024', '2048', '8192'],'2048', (v)=>`${v} KB`, t=>parseInt(t));
 
 $('#hardware_settings').append("<div id='divCPU' style='display:flex;flex-direction:row'></div>");
-bind_config_choice("OPT_CPU_REVISION", "CPU",[0,1,2], 0, 
-(v)=>{ return (68000+v*10)},
+bind_config_choice("OPT_CPU_REVISION", "CPU",[0,1,2,4], 0, 
+(v)=>{ return  v==4 ?`fake 030 for Settlers map size 8`:(68000+v*10)},
 (t)=>{
-    let val = t;
+    let val = t.toString().replace("fake 030 for Settlers map size 8","68030");
     val = (val-68000)/10;
-    return val;
+    return val==3 ?4: val;
 }, "#divCPU");
 
 bind_config_choice("OPT_CPU_OVERCLOCKING", "",[0,2,3,4,5,6,8,12,14], 0, 
@@ -3224,9 +3255,6 @@ $('.layer').change( function(event) {
             <path d="M5.5 3.5A1.5 1.5 0 0 1 7 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5zm5 0A1.5 1.5 0 0 1 12 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5z"/>
           </svg>`).parent().attr("title", "pause").attr("data-original-title", "pause");
 
-            //have to catch an intentional "unwind" exception here, which is thrown
-            //by emscripten_set_main_loop() after emscripten_cancel_main_loop();
-            //to simulate infinity gamelloop see emscripten API for more info ... 
             try{wasm_run();} catch(e) {}        
             try {connect_audio_processor();} catch(e){ console.error(e);}
             running = true;
@@ -3235,7 +3263,10 @@ $('.layer').change( function(event) {
         //document.getElementById('canvas').focus();
     });
     
-    $("#button_ff").click(()=> action('toggle_warp'));
+    $("#button_ff").click(()=> {
+        action('toggle_warp'); 
+        hide_all_tooltips();
+    });
 
     $('#modal_file_slot').on('hidden.bs.modal', function () {
         $("#filedialog").val(''); //clear file slot after file has been loaded
@@ -3519,6 +3550,7 @@ $('.layer').change( function(event) {
     
     $('#button_speed_toggle').click(function () 
     {
+        hide_all_tooltips();
         if(current_speed==100)
             current_speed=selected_speed;    
         else
