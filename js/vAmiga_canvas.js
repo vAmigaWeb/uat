@@ -1,7 +1,6 @@
 let TPP=1;
 let HBLANK_MIN=0x12*TPP;
 let HPIXELS=912*TPP;
-let PAL_EXTRA_VPIXELS=140;
 let VPIXELS=313;
 let xOff = HBLANK_MIN;//252
 let yOff=26 + 6;
@@ -34,7 +33,7 @@ function render_canvas()
 }
 
 function js_set_display(_xOff, _yOff, _clipped_width,_clipped_height) {
-    xOff=_xOff-HBLANK_MIN*4;
+    xOff=_xOff*TPP -HBLANK_MIN*4;
     yOff=_yOff;
     clipped_width =_clipped_width;
     clipped_height=_clipped_height;
@@ -83,7 +82,7 @@ function scaleVMCanvas() {
     var topPos=0;
     if(wratio < src_ratio)
     {
-        var reducedHeight=window.innerWidth*inv_src_ratio;
+        var reducedHeight=TPP*window.innerWidth*inv_src_ratio;
         //all lower than 1.25
         $("#canvas").css("width", "100%")
         .css("height", Math.round(reducedHeight)+'px');
