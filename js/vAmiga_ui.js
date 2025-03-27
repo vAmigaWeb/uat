@@ -1981,13 +1981,13 @@ function InitWrappers() {
         gainNode.gain.value = current_sound_volume;
         worklet_node.connect(gainNode);
         gainNode.connect(audioContext.destination);
-      
+        const SLOT_COUNT=2
         const SAMPLES_PER_CHUNK=256;
         init_sound_buffer=function(){
             console.log("get wasm sound buffer adresses");
             let sound_buffer_address = wasm_get_sound_buffer_address();
             soundbuffer_slots=[];
-            for(slot=0;slot<16;slot++)
+            for(slot=0;slot<SLOT_COUNT;slot++)
             {
                 soundbuffer_slots.push(
                     new Float32Array(Module.HEAPF32.buffer, sound_buffer_address+(slot*SAMPLES_PER_CHUNK*2)*4, SAMPLES_PER_CHUNK*2));
@@ -1995,7 +1995,7 @@ function InitWrappers() {
         }
         init_sound_buffer();
 
-        empty_shuttles=new RingBuffer(16);
+        empty_shuttles=new RingBuffer(SLOT_COUNT);
         worklet_node.port.onmessage = (msg) => {
             //direct c function calls with preceeding Module._ are faster than cwrap
             let samples=Module._wasm_copy_into_sound_buffer();

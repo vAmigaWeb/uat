@@ -69,7 +69,7 @@ class RingBuffer {
 
 
 
-
+const SLOT_COUNT=2;
 class vAmigaAudioProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -78,11 +78,11 @@ class vAmigaAudioProcessor extends AudioWorkletProcessor {
       console.error("error:"+ error);
     };
 
-    this.fetch_buffer_stack=new RingBuffer(16);
+    this.fetch_buffer_stack=new RingBuffer(SLOT_COUNT);
     this.buffer=null;
     this.buf_addr=0;
-    this.recyle_buffer_stack=new RingBuffer(16);
-    for(let i=0; i<16;i++)
+    this.recyle_buffer_stack=new RingBuffer(SLOT_COUNT);
+    for(let i=0; i<SLOT_COUNT;i++)
     {
       this.recyle_buffer_stack.write(new Float32Array(SAMPLES_PER_CHUNK*2));
     }  
