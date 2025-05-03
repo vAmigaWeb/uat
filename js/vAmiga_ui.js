@@ -555,11 +555,15 @@ function message_handler_queue_worker(msg, data, data2)
         $(`#button_OPT_CPU_OVERCLOCKING`).text(`${Math.round((v==0?1:v)*7.09)} MHz ${cause}`);
         v=wasm_get_config_item("AGNUS.REVISION");
         let agnus_revs=['OCS_OLD','OCS','ECS_1MB','ECS_2MB'];
-        $(`#button_OPT_AGNUS_REVISION`).text(`agnus revision=${agnus_revs[v]} ${cause}`);
+        let agnus_description = agnus_map.filter((e) => e.v == agnus_revs[v]);
+        agnus_description= agnus_description.length>0 ? agnus_description[0].t : agnus_revs[v];
+        $(`#button_OPT_AGNUS_REVISION`).text(`agnus revision=${agnus_description} ${cause}`);
 
         v=wasm_get_config_item("DENISE.REVISION");
         let denise_revs=['OCS','ECS'];
-        $(`#button_OPT_DENISE_REVISION`).text(`denise revision=${denise_revs[v]} ${cause}`);
+        let denise_description = denise_map.filter((e) => e.v == denise_revs[v]);
+        denise_description= denise_description.length>0 ? denise_description[0].t : denise_revs[v];
+        $(`#button_OPT_DENISE_REVISION`).text(`denise revision=${denise_description} ${cause}`);
       
         $(`#button_${"OPT_CHIP_RAM"}`).text(`chip ram=${wasm_get_config_item('CHIP_RAM')} KB ${cause}`);
         $(`#button_${"OPT_SLOW_RAM"}`).text(`slow ram=${wasm_get_config_item('SLOW_RAM')} KB ${cause}`);
@@ -1981,26 +1985,25 @@ function InitWrappers() {
         gainNode.gain.value = current_sound_volume;
         worklet_node.connect(gainNode);
         gainNode.connect(audioContext.destination);
-        const SLOT_COUNT=2
-        const SAMPLES_PER_CHUNK=256;
+      
         init_sound_buffer=function(){
             console.log("get wasm sound buffer adresses");
             let sound_buffer_address = wasm_get_sound_buffer_address();
             soundbuffer_slots=[];
-            for(slot=0;slot<SLOT_COUNT;slot++)
+            for(slot=0;slot<16;slot++)
             {
                 soundbuffer_slots.push(
-                    new Float32Array(Module.HEAPF32.buffer, sound_buffer_address+(slot*SAMPLES_PER_CHUNK*2)*4, SAMPLES_PER_CHUNK*2));
+                    new Float32Array(Module.HEAPF32.buffer, sound_buffer_address+(slot*2048)*4, 2048));
             }
         }
         init_sound_buffer();
 
-        empty_shuttles=new RingBuffer(SLOT_COUNT);
+        empty_shuttles=new RingBuffer(16);
         worklet_node.port.onmessage = (msg) => {
             //direct c function calls with preceeding Module._ are faster than cwrap
             let samples=Module._wasm_copy_into_sound_buffer();
             let shuttle = msg.data;
-            if(samples<SAMPLES_PER_CHUNK)
+            if(samples<1024)
             {
                 if(shuttle!="empty")
                 {
@@ -2009,7 +2012,7 @@ function InitWrappers() {
                 return;
             }
             let slot=0;
-            while(samples>=SAMPLES_PER_CHUNK)
+            while(samples>=1024)
             {
                 if(shuttle == null || shuttle=="empty")
                 {
@@ -2031,7 +2034,7 @@ function InitWrappers() {
                 shuttle.set(wasm_buffer_slot);
                 worklet_node.port.postMessage(shuttle, [shuttle.buffer]);
                 shuttle=null;
-                samples-=SAMPLES_PER_CHUNK;
+                samples-=1024;
             }            
         };
         worklet_node.port.onmessageerror = (msg) => {
@@ -2386,10 +2389,10 @@ function InitWrappers() {
         Module._wasm_mouse(mouse_port,e.movementX,e.movementY);
     }
     function updatePosition_fallback(e) {
-        let movementX=e.screenX-window.last_mouse_x;
-        let movementY=e.screenY-window.last_mouse_y;
-        window.last_mouse_x=e.screenX;
-        window.last_mouse_y=e.screenY;
+        let movementX=e.clientX-window.last_mouse_x;
+        let movementY=e.clientY-window.last_mouse_y;
+        window.last_mouse_x=e.clientX;
+        window.last_mouse_y=e.clientY;
         let border_speed=4;
         let border_pixel=2;
     
@@ -2985,17 +2988,23 @@ function validate_hardware()
 {
     let agnes=load_setting("OPT_AGNUS_REVISION", 'ECS_1MB');
     let chip_ram=load_setting("OPT_CHIP_RAM", '512');
+    let agnes_desc=agnes;
+    if(typeof agnus_map !== 'undefined')
+    {
+        let found=agnus_map.filter(e=>e.v==agnes);
+        if(found.length>0) agnes_desc = found[0].t.split('|')[0].trim();
+    }
     if(agnes.startsWith("OCS") && chip_ram > 512)
     {
-        alert(`${agnes} agnus can address max. 512KB. Correcting to highest possible setting.`);
+        alert(`${agnes_desc} agnus can address max. 512KB of chip ram. Correcting to highest possible setting.`);
         set_hardware("OPT_CHIP_RAM", '512');
-        $(`#button_${"OPT_CHIP_RAM"}`).text("chip ram"+'='+'512 (corrected)');
+        $(`#button_${"OPT_CHIP_RAM"}`).text("chip ram"+'='+'512 KB (corrected)');
     }
     else if(agnes== "ECS_1MB" && chip_ram > 1024)
     {
-        alert(`${agnes} agnus can address max. 1024KB. Correcting to highest possible setting.`);
+        alert(`${agnes_desc} agnus can address max. 1024KB of chip ram. Correcting to highest possible setting.`);
         set_hardware("OPT_CHIP_RAM", '1024');
-        $(`#button_${"OPT_CHIP_RAM"}`).text("chip ram"+'='+'1024 (corrected)');
+        $(`#button_${"OPT_CHIP_RAM"}`).text("chip ram"+'='+'1024 KB (corrected)');
     }
 }
 
@@ -3026,9 +3035,9 @@ function bind_config_choice(key, name, values, default_value, value2text=null, t
     `);
 
     let set_choice = function (choice) {
-        $(`#button_${key}`).text(`${name}${name.length>0?'=':''}${choice}`);
+        $(`#button_${key}`).html(`${name}${name.length>0?'=':''}${choice}`);
         save_setting(key, text2value(choice));
-        validate_hardware();
+        validate_hardware(); 
 
         let result=wasm_configure(key.substring(4),`${text2value(choice)}`);
         if(result.length>0)
@@ -3045,7 +3054,7 @@ function bind_config_choice(key, name, values, default_value, value2text=null, t
 
     $(`#choose_${key} a`).click(function () 
     {
-        let choice=$(this).text();
+        let choice=$(this).html();
         set_choice(choice);
         $("#modal_settings").focus();
     });
@@ -3083,8 +3092,48 @@ bind_config_choice("OPT_DRIVE_SPEED", "floppy drive speed",['-1', '1', '2', '4',
 
 $('#hardware_settings').append(`<div class="mt-4">hardware settings</div><span style="font-size: smaller;">(shuts machine down on agnus model or memory change)</span>`);
 
-bind_config_choice("OPT_AGNUS_REVISION", "agnus revision",['OCS_OLD','OCS','ECS_1MB','ECS_2MB'],'ECS_2MB');
-bind_config_choice("OPT_DENISE_REVISION", "denise revision",['OCS','ECS'],'OCS');
+
+agnus_map = [
+    {v: "OCS_OLD", t:`Early OCS (512KB) | A1000, A2000a (<span id="MOS8367">MOS8367</span><span id="MOS8361">MOS8361</span>)`},
+    {v: "OCS", t:`OCS (512KB) | Early A500, A2000 (<span id="MOS8370">MOS8370</span><span id="MOS8371">MOS8371</span>)`},
+    {v: "ECS_1MB", t:"ECS (1MB) | Later A500, A2000 (MOS8372A)"},
+    {v: "ECS_2MB", t:"ECS (2MB) | A500+, A600 (MOS8375)"}];    
+ 
+bind_config_choice("OPT_AGNUS_REVISION", "agnus revision",['OCS_OLD','OCS','ECS_1MB','ECS_2MB'],'ECS_2MB',
+    (v)=> {
+        let found = agnus_map.filter(e=>e.v === v);
+        if(found.length>0)
+            return found[0].t;
+        else
+            return v;
+    }
+    , t=>
+    {
+        let found = agnus_map.filter(e=>e.t.split('|')[0] === t.split('|')[0]);
+        if(found.length>0)
+            return found[0].v;
+        else
+            return t;
+    }
+);
+
+denise_map = [ {v: "OCS", t:"OCS | A500, A1000, A2000 (MOS8362R8)"},
+    {v: "ECS", t:"ECS | A500+, A600 (MOS8373R4)"}];
+bind_config_choice("OPT_DENISE_REVISION", "denise revision",['OCS','ECS'],'OCS',(v)=> {
+    let found = denise_map.filter(e=>e.v==v);
+    if(found.length>0)
+        return found[0].t;
+    else
+        return v;
+}
+, t=>
+{
+    let found = denise_map.filter(e=>e.t==t);
+    if(found.length>0)
+        return found[0].v;
+    else
+        return t;
+});
 bind_config_choice("OPT_CHIP_RAM", "chip ram",['256', '512', '1024', '2048'],'2048', (v)=>`${v} KB`, t=>parseInt(t));
 bind_config_choice("OPT_SLOW_RAM", "slow ram",['0', '256', '512'],'0', (v)=>`${v} KB`, t=>parseInt(t));
 bind_config_choice("OPT_FAST_RAM", "fast ram",['0', '256', '512','1024', '2048', '8192'],'2048', (v)=>`${v} KB`, t=>parseInt(t));
@@ -3127,12 +3176,13 @@ auto_snapshot_switch.change( function() {
 ntsc_pixel_ratio_switch = $('#ntsc_pixel_ratio_switch');
 use_ntsc_pixel=load_setting('ntsc_pixel', false);
 wasm_set_display(use_ntsc_pixel ? 'ntsc':'pal');
-
+document.body.setAttribute("ntsc", use_ntsc_pixel);
 ntsc_pixel_ratio_switch.prop('checked', use_ntsc_pixel);
 ntsc_pixel_ratio_switch.change( function() {
     use_ntsc_pixel  = this.checked;
     save_setting('ntsc_pixel', this.checked);
     wasm_set_display(use_ntsc_pixel ? 'ntsc':'pal');
+    document.body.setAttribute("ntsc", use_ntsc_pixel);
 });
 //------
 
@@ -3599,6 +3649,8 @@ $('.layer').change( function(event) {
     {       
         let app_name = $("#input_app_title").val();
         
+        global_apptitle = app_name;
+
         await mount_workspaces();
         try
         {
@@ -3656,6 +3708,8 @@ $('.layer').change( function(event) {
     $('#button_save_snapshot').click(async function() 
     {       
         let app_name = $("#input_app_title").val();
+
+        global_apptitle = app_name;
         
         var snapshot_json= wasm_take_user_snapshot();
         var snap_obj = JSON.parse(snapshot_json);

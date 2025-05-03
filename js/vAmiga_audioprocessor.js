@@ -1,4 +1,3 @@
-const SAMPLES_PER_CHUNK = 256;
 class RingBuffer {
     constructor(capacity) {
         this.capacity = capacity+1;
@@ -69,7 +68,7 @@ class RingBuffer {
 
 
 
-const SLOT_COUNT=2;
+
 class vAmigaAudioProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -78,13 +77,13 @@ class vAmigaAudioProcessor extends AudioWorkletProcessor {
       console.error("error:"+ error);
     };
 
-    this.fetch_buffer_stack=new RingBuffer(SLOT_COUNT);
+    this.fetch_buffer_stack=new RingBuffer(16);
     this.buffer=null;
     this.buf_addr=0;
-    this.recyle_buffer_stack=new RingBuffer(SLOT_COUNT);
-    for(let i=0; i<SLOT_COUNT;i++)
+    this.recyle_buffer_stack=new RingBuffer(16);
+    for(let i=0; i<16;i++)
     {
-      this.recyle_buffer_stack.write(new Float32Array(SAMPLES_PER_CHUNK*2));
+      this.recyle_buffer_stack.write(new Float32Array(2048));
     }  
 
     /*    this.samples_processed=0;
@@ -136,7 +135,7 @@ class vAmigaAudioProcessor extends AudioWorkletProcessor {
         this.buffer=this.fetch_buffer_stack.read();
         this.buf_addr=0;
       }
-      else if(this.counter_no_buffer%SAMPLES_PER_CHUNK==0)
+      else if(this.counter_no_buffer%1024==0)
       { 
         //console.log("initial fetch");     
         this.fetch_data();
@@ -150,10 +149,10 @@ class vAmigaAudioProcessor extends AudioWorkletProcessor {
       let startpos=this.buf_addr;
       let endpos=startpos+128;
       output[0].set(this.buffer.subarray(startpos,endpos));
-      output[1].set(this.buffer.subarray(SAMPLES_PER_CHUNK+startpos,SAMPLES_PER_CHUNK+endpos));
+      output[1].set(this.buffer.subarray(1024+startpos,1024+endpos));
       this.buf_addr=endpos;
       
-      if(endpos>=SAMPLES_PER_CHUNK) //this.buffer.length/2
+      if(endpos>=1024) //this.buffer.length/2
       {
 //        console.log("buffer empty. fetch_buffer ready="+(fetch_buffer!= null));
         this.recyle_buffer_stack.write(this.buffer);
