@@ -66,24 +66,22 @@ class RingBuffer {
     }
 }
 
-
-
-
 class vAmigaAudioProcessor extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super();
+    this.options = options.processorOptions;
     this.port.onmessage = this.handleMessage.bind(this);
     this.port.onmessageerror = (error)=>{ 
       console.error("error:"+ error);
     };
 
-    this.fetch_buffer_stack=new RingBuffer(16);
+    this.fetch_buffer_stack=new RingBuffer(this.options.SLOT_COUNT);
     this.buffer=null;
     this.buf_addr=0;
-    this.recyle_buffer_stack=new RingBuffer(16);
-    for(let i=0; i<16;i++)
+    this.recyle_buffer_stack=new RingBuffer(this.options.SLOT_COUNT);
+    for(let i=0; i<this.options.SLOT_COUNT;i++)
     {
-      this.recyle_buffer_stack.write(new Float32Array(2048));
+      this.recyle_buffer_stack.write(new Float32Array(this.options.SAMPLES_PER_CHUNK*2));
     }  
 
     /*    this.samples_processed=0;
@@ -96,7 +94,22 @@ class vAmigaAudioProcessor extends AudioWorkletProcessor {
 
   handleMessage(event) {
     //console.log("processor received sound data");
-    this.fetch_buffer_stack.write(event.data);
+    if(event.data.slot_count)
+    {
+      this.options.SLOT_COUNT=event.data.slot_count;
+      this.options.SAMPLES_PER_CHUNK=event.data.samples_per_chunk;
+      this.recyle_buffer_stack=new RingBuffer(this.options.SLOT_COUNT);
+      for(let i=0; i<this.options.SLOT_COUNT;i++)
+      {
+        this.recyle_buffer_stack.write(new Float32Array(this.options.SAMPLES_PER_CHUNK*2));
+      }  
+      this.buffer=null;
+      this.buf_addr=0;
+      this.counter_no_buffer=0;
+      this.fetch_data();
+    }
+    else if(event.data)
+      this.fetch_buffer_stack.write(event.data);
   }
 
   fetch_data()
@@ -135,7 +148,7 @@ class vAmigaAudioProcessor extends AudioWorkletProcessor {
         this.buffer=this.fetch_buffer_stack.read();
         this.buf_addr=0;
       }
-      else if(this.counter_no_buffer%1024==0)
+      else if(this.counter_no_buffer%this.options.SAMPLES_PER_CHUNK==0)
       { 
         //console.log("initial fetch");     
         this.fetch_data();
@@ -149,10 +162,10 @@ class vAmigaAudioProcessor extends AudioWorkletProcessor {
       let startpos=this.buf_addr;
       let endpos=startpos+128;
       output[0].set(this.buffer.subarray(startpos,endpos));
-      output[1].set(this.buffer.subarray(1024+startpos,1024+endpos));
+      output[1].set(this.buffer.subarray(this.options.SAMPLES_PER_CHUNK+startpos,this.options.SAMPLES_PER_CHUNK+endpos));
       this.buf_addr=endpos;
       
-      if(endpos>=1024) //this.buffer.length/2
+      if(endpos>=this.options.SAMPLES_PER_CHUNK) //this.buffer.length/2
       {
 //        console.log("buffer empty. fetch_buffer ready="+(fetch_buffer!= null));
         this.recyle_buffer_stack.write(this.buffer);

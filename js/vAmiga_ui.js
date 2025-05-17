@@ -609,9 +609,9 @@ async function fetchOpenROMS(osname='aros'){
     }
     if(osname=='aros')
     {
-        let response = await fetch("roms/aros.bin");
+        let response = await fetch("roms/aros-rom-20250219.bin");
         await installer('.rom_file', response);
-        response = await fetch("roms/aros_ext.bin");
+        response = await fetch("roms/aros-ext-20250219.bin");
         await installer('.rom_ext_file', response);   
     }
     else if(osname=='emutos')
@@ -1957,7 +1957,19 @@ function InitWrappers() {
             }
         }
     }
-    
+
+
+    setAudioOptions= (slot_count, samples_per_chunk)=> {
+        SLOT_COUNT = slot_count;
+        SAMPLES_PER_CHUNK = samples_per_chunk;
+        if (worklet_node) {
+            worklet_node.port.postMessage({ slot_count: SLOT_COUNT, samples_per_chunk: SAMPLES_PER_CHUNK });
+        }
+        if(init_sound_buffer) init_sound_buffer();
+    }
+
+    SLOT_COUNT=2
+    SAMPLES_PER_CHUNK=512;
     connect_audio_processor_standard = async () => {
         if(audioContext.state !== 'running') {
             await resume_audio();
@@ -1977,6 +1989,7 @@ function InitWrappers() {
         }
         await audioContext.audioWorklet.addModule('js/vAmiga_audioprocessor.js');
         worklet_node = new AudioWorkletNode(audioContext, 'vAmiga_audioprocessor', {
+            processorOptions: { SLOT_COUNT : SLOT_COUNT, SAMPLES_PER_CHUNK: SAMPLES_PER_CHUNK },
             outputChannelCount: [2],
             numberOfInputs: 0,
             numberOfOutputs: 1
@@ -1990,20 +2003,20 @@ function InitWrappers() {
             console.log("get wasm sound buffer adresses");
             let sound_buffer_address = wasm_get_sound_buffer_address();
             soundbuffer_slots=[];
-            for(slot=0;slot<16;slot++)
+            for(slot=0;slot<SLOT_COUNT;slot++)
             {
                 soundbuffer_slots.push(
-                    new Float32Array(Module.HEAPF32.buffer, sound_buffer_address+(slot*2048)*4, 2048));
+                    new Float32Array(Module.HEAPF32.buffer, sound_buffer_address+(slot*SAMPLES_PER_CHUNK*2)*4, SAMPLES_PER_CHUNK*2));
             }
         }
         init_sound_buffer();
 
-        empty_shuttles=new RingBuffer(16);
+        empty_shuttles=new RingBuffer(SLOT_COUNT);
         worklet_node.port.onmessage = (msg) => {
             //direct c function calls with preceeding Module._ are faster than cwrap
             let samples=Module._wasm_copy_into_sound_buffer();
             let shuttle = msg.data;
-            if(samples<1024)
+            if(samples<SAMPLES_PER_CHUNK)
             {
                 if(shuttle!="empty")
                 {
@@ -2012,7 +2025,7 @@ function InitWrappers() {
                 return;
             }
             let slot=0;
-            while(samples>=1024)
+            while(samples>=SAMPLES_PER_CHUNK)
             {
                 if(shuttle == null || shuttle=="empty")
                 {
@@ -2034,7 +2047,7 @@ function InitWrappers() {
                 shuttle.set(wasm_buffer_slot);
                 worklet_node.port.postMessage(shuttle, [shuttle.buffer]);
                 shuttle=null;
-                samples-=1024;
+                samples-=SAMPLES_PER_CHUNK;
             }            
         };
         worklet_node.port.onmessageerror = (msg) => {
@@ -2389,10 +2402,10 @@ function InitWrappers() {
         Module._wasm_mouse(mouse_port,e.movementX,e.movementY);
     }
     function updatePosition_fallback(e) {
-        let movementX=e.clientX-window.last_mouse_x;
-        let movementY=e.clientY-window.last_mouse_y;
-        window.last_mouse_x=e.clientX;
-        window.last_mouse_y=e.clientY;
+        let movementX=e.screenX-window.last_mouse_x;
+        let movementY=e.screenY-window.last_mouse_y;
+        window.last_mouse_x=e.screenX;
+        window.last_mouse_y=e.screenY;
         let border_speed=4;
         let border_pixel=2;
     
