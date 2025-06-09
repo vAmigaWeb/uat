@@ -113,18 +113,21 @@ const load_script= (url) => {
     });
 }
 
-async function mount_workspaces() {
+imported_hd_path = '/imported_hd';
+exported_hd_path = '/exported_hd';
+async function mount_folder(folder_path) {
     return new Promise((resolve, reject) => {
         try{
-            FS.mkdir(workspace_path) 
+            FS.mkdir(folder_path) 
         } catch(e) {console.log(e)}
         try{
-        FS.mount(IDBFS, {}, workspace_path);
+            FS.mount(IDBFS, {}, folder_path);
         } catch(e) {console.log(e)}
 
         FS.syncfs(true, () => {
         // Callback function when sync is complete
             resolve();
+            console.log(`${folder_path} mounted`);
         });
     });
 }
@@ -557,7 +560,7 @@ function message_handler_queue_worker(msg, data, data2)
         let agnus_revs=['OCS_OLD','OCS','ECS_1MB','ECS_2MB'];
         let agnus_description = agnus_map.filter((e) => e.v == agnus_revs[v]);
         agnus_description= agnus_description.length>0 ? agnus_description[0].t : agnus_revs[v];
-        $(`#button_OPT_AGNUS_REVISION`).text(`agnus revision=${agnus_description} ${cause}`);
+        $(`#button_OPT_AGNUS_REVISION`).html(`agnus revision=${agnus_description} ${cause}`);
 
         v=wasm_get_config_item("DENISE.REVISION");
         let denise_revs=['OCS','ECS'];
@@ -944,9 +947,9 @@ function configure_file_dialog(reset=false)
 
                 });
 
-                var zip = new JSZip();
+                zip = new JSZip();
                 zip.loadAsync(file_slot_file).then(async function (zip) {
-                    await mount_workspaces();
+                    await mount_folder(workspace_path);
  
                     let workspaces_found = Object.keys(zip.files).filter(f=>f.includes(".vamiga/config") && !f.startsWith("__MACOSX"));
                     if(workspaces_found.length>0)
@@ -1044,10 +1047,11 @@ function configure_file_dialog(reset=false)
                     var list='<ul id="ui_file_list" class="list-group">';
                     var mountable_count=0;
                     zip.forEach(function (relativePath, zipfile){
-                        if(!relativePath.startsWith("__MACOSX") && !zipfile.dir)
+                        if(!zipfile.dir && !relativePath.startsWith("__MACOSX") && !relativePath.includes(".DS_Store"))
                         {
                             let mountable = true; //relativePath.toLowerCase().match(/[.](zip|adf|hdf|dms|exe|vAmiga)$/i) || true;
                             list+='<li '+
+//                            `${zipfile.dir ? 'style="background-color: #444 !important"':""}` +
                             (mountable ? 'id="li_fileselect'+mountable_count+'"':'')
                             +' class="list-group-item list-group-item-action'+ 
                                 (mountable ? '':' disabled')+'">'+relativePath+'</li>';
@@ -1087,6 +1091,7 @@ function configure_file_dialog(reset=false)
                                 if(!path.toLowerCase().match(/[.](zip|adf|hdf|dms|exe|vAmiga|st)$/i))
                                 {
                                     file_slot_file_name+=".disk";
+                                    file_slot_file_name=file_slot_file_name.substring(file_slot_file_name.lastIndexOf("/")+1)
                                 }
                                 file_slot_file=u8;
 
@@ -1176,6 +1181,7 @@ function configure_file_dialog(reset=false)
                 }
                 else
                 {
+                    file_slot_file_name=file_slot_file_name.substring(file_slot_file_name.lastIndexOf("/")+1)
                     file_slot_file_name+=".disk";
                     prompt_for_drive();
                 }
@@ -1187,7 +1193,18 @@ function configure_file_dialog(reset=false)
     }
 }
 
-function prompt_for_drive()
+function sync_fs(populate) {
+  return new Promise((resolve, reject) => {
+    FS.syncfs(populate, (err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
+
+
+async function prompt_for_drive(folder=false)
 {
     let cancel=`<div id="prompt_drive_cancel" class="close" style="position:absolute;top:0.2em;right:0.4em;cursor:pointer" onclick="show_drive_select(false)">×</div>`;
     let_drive_select_stay_open=false;
@@ -1209,6 +1226,75 @@ function prompt_for_drive()
         {
             setTimeout(()=>$("#div_drive_select").hide(),1000); 
         }
+    }
+
+    if(folder)
+    {
+        $('#alert_import').show();
+        await mount_folder(imported_hd_path);
+        deleteAllFiles(imported_hd_path); 
+
+
+        function ensureDirectoryExists(path) {
+            const parts = path.split('/');
+            let current = '';
+            for (let i = 0; i < parts.length; i++) {
+                if (!parts[i]) continue;
+                current += '/' + parts[i];
+                try {
+                    if (!FS.analyzePath(current).exists) {
+                        FS.mkdir(current);
+                    }
+                } catch (e) {  }
+            }
+        }
+
+        let total_size = 0;
+        for (let [relativePath, file] of Object.entries(zip.files).filter(f=>!f[0].startsWith("__MACOSX") && !f[0].includes(".DS_Store"))) {
+            if(file.dir) continue;
+            let fileData = await file.async("uint8array");
+            if(fileData.length > 0)
+            {
+                let fs_path = imported_hd_path+"/"+ relativePath;
+                ensureDirectoryExists(fs_path.substring(0, fs_path.lastIndexOf('/')));
+                FS.writeFile(fs_path, fileData);
+                total_size += fileData.length;
+            }
+        }
+        file_slot_file_name = last_zip_archive_name.replace(".zip","").replace(".ZIP","");
+        let json = wasm_export_disk(imported_hd_path, 4+ 1.2*(total_size/(1024*1024)) , file_slot_file_name);
+        let hd_obj = JSON.parse(json);
+        let hd_buffer = new Uint8Array(Module.HEAPU8.buffer, hd_obj.address, hd_obj.size);
+        let filebuffer = hd_buffer.slice(0,hd_obj.size);
+
+        file_slot_file_name = file_slot_file_name+".hdf";
+        file_slot_file = filebuffer;
+
+        deleteAllFiles(imported_hd_path); 
+
+        await sync_fs();
+        $('#alert_import').hide(); 
+    }
+    else if(file_slot_file_name.match(/[.](disk)$/i) && file_slot_file.length>1710000) //HD floppy disk 1.71MB
+    {
+        $('#alert_import').show();
+        await mount_folder(imported_hd_path);
+        deleteAllFiles(imported_hd_path); 
+
+        FS.writeFile(imported_hd_path+"/"+file_slot_file_name.replace(".disk",""), file_slot_file);
+        await sync_fs();
+
+        let json = wasm_export_disk(imported_hd_path, 4+ 1.2*(file_slot_file.length/(1024*1024)) , file_slot_file_name);
+        let hd_obj = JSON.parse(json);
+        let hd_buffer = new Uint8Array(Module.HEAPU8.buffer, hd_obj.address, hd_obj.size);
+        let filebuffer = hd_buffer.slice(0,hd_obj.size);
+
+        file_slot_file_name = file_slot_file_name.replace(".disk",".hdf");
+        file_slot_file = filebuffer;
+
+        deleteAllFiles(imported_hd_path); 
+        await sync_fs();
+        $('#alert_import').hide(); 
     }
 
     if(file_slot_file_name.match(/[.](adf|dms|exe|st|disk)$/i))
@@ -1899,7 +1985,8 @@ function InitWrappers() {
     wasm_poke = Module.cwrap('wasm_poke', 'undefined', ['number', 'number']);
     wasm_has_disk = Module.cwrap('wasm_has_disk', 'number', ['string']);
     wasm_eject_disk = Module.cwrap('wasm_eject_disk', 'undefined', ['string']);
-    wasm_export_disk = Module.cwrap('wasm_export_disk', 'string', ['string']);
+    wasm_export_disk = Module.cwrap('wasm_export_disk', 'string', ['string', 'number', 'string']);
+    wasm_export_as_folder = Module.cwrap('wasm_export_as_folder', 'string', ['string', 'string']);
     wasm_configure = Module.cwrap('wasm_configure', 'string', ['string', 'string']);
     wasm_configure_key = Module.cwrap('wasm_configure_key', 'string', ['string', 'string', 'string']);
     wasm_write_string_to_ser = Module.cwrap('wasm_write_string_to_ser', 'undefined', ['string']);
@@ -1957,19 +2044,7 @@ function InitWrappers() {
             }
         }
     }
-
-
-    setAudioOptions= (slot_count, samples_per_chunk)=> {
-        SLOT_COUNT = slot_count;
-        SAMPLES_PER_CHUNK = samples_per_chunk;
-        if (worklet_node) {
-            worklet_node.port.postMessage({ slot_count: SLOT_COUNT, samples_per_chunk: SAMPLES_PER_CHUNK });
-        }
-        if(init_sound_buffer) init_sound_buffer();
-    }
-
-    SLOT_COUNT=2
-    SAMPLES_PER_CHUNK=512;
+    
     connect_audio_processor_standard = async () => {
         if(audioContext.state !== 'running') {
             await resume_audio();
@@ -1989,7 +2064,6 @@ function InitWrappers() {
         }
         await audioContext.audioWorklet.addModule('js/vAmiga_audioprocessor.js');
         worklet_node = new AudioWorkletNode(audioContext, 'vAmiga_audioprocessor', {
-            processorOptions: { SLOT_COUNT : SLOT_COUNT, SAMPLES_PER_CHUNK: SAMPLES_PER_CHUNK },
             outputChannelCount: [2],
             numberOfInputs: 0,
             numberOfOutputs: 1
@@ -2003,20 +2077,20 @@ function InitWrappers() {
             console.log("get wasm sound buffer adresses");
             let sound_buffer_address = wasm_get_sound_buffer_address();
             soundbuffer_slots=[];
-            for(slot=0;slot<SLOT_COUNT;slot++)
+            for(slot=0;slot<16;slot++)
             {
                 soundbuffer_slots.push(
-                    new Float32Array(Module.HEAPF32.buffer, sound_buffer_address+(slot*SAMPLES_PER_CHUNK*2)*4, SAMPLES_PER_CHUNK*2));
+                    new Float32Array(Module.HEAPF32.buffer, sound_buffer_address+(slot*2048)*4, 2048));
             }
         }
         init_sound_buffer();
 
-        empty_shuttles=new RingBuffer(SLOT_COUNT);
+        empty_shuttles=new RingBuffer(16);
         worklet_node.port.onmessage = (msg) => {
             //direct c function calls with preceeding Module._ are faster than cwrap
             let samples=Module._wasm_copy_into_sound_buffer();
             let shuttle = msg.data;
-            if(samples<SAMPLES_PER_CHUNK)
+            if(samples<1024)
             {
                 if(shuttle!="empty")
                 {
@@ -2025,7 +2099,7 @@ function InitWrappers() {
                 return;
             }
             let slot=0;
-            while(samples>=SAMPLES_PER_CHUNK)
+            while(samples>=1024)
             {
                 if(shuttle == null || shuttle=="empty")
                 {
@@ -2047,7 +2121,7 @@ function InitWrappers() {
                 shuttle.set(wasm_buffer_slot);
                 worklet_node.port.postMessage(shuttle, [shuttle.buffer]);
                 shuttle=null;
-                samples-=SAMPLES_PER_CHUNK;
+                samples-=1024;
             }            
         };
         worklet_node.port.onmessageerror = (msg) => {
@@ -3498,7 +3572,7 @@ $('.layer').change( function(event) {
             }
             if(call_param_dialog_on_disk == false)
             {//loading is probably done by scripting
-            }
+            }            
         };
 
         if(!is_running())
@@ -3523,6 +3597,9 @@ $('.layer').change( function(event) {
     }
     $("#button_insert_file").click(()=>{
          prompt_for_drive();
+    });
+    $("#button_insert_folder").click(()=>{
+         prompt_for_drive(folder=true);
     });
     
     $('#modal_take_snapshot').on('hidden.bs.modal', function () {
@@ -3594,10 +3671,13 @@ $('.layer').change( function(event) {
             if(wasm_has_disk("dh"+dfn))
             {
                 $("#button_export_hd"+dfn).show();
+                $("#button_export_hd"+dfn+"_folder").show();
+
             }
             else
             {
                 $("#button_export_hd"+dfn).hide();
+                $("#button_export_hd"+dfn+"_folder").hide();
             }
         }
     }
@@ -3628,8 +3708,19 @@ $('.layer').change( function(event) {
             a.click();
             window.URL.revokeObjectURL(url);
         });
-        $('#button_export_hd'+dn).click(function() 
+        $('#button_export_hd'+dn+"_folder").click(async function() 
         {
+            let drive = this.id.replace("_folder","");
+            let dn = drive.at(-1); 
+            let path = exported_hd_path+dn;
+            await mount_folder(path);
+            deleteAllFiles(path);
+            let name = wasm_export_as_folder("dh"+dn, path)
+            zip_and_download_folder(name+".zip",path)
+        });
+
+        $('#button_export_hd'+dn).click(function() 
+        {   
             let d64_json = wasm_export_disk("dh"+this.id.at(-1));
             let d64_obj = JSON.parse(d64_json);
             let d64_buffer = new Uint8Array(Module.HEAPU8.buffer, d64_obj.address, d64_obj.size);
@@ -3664,7 +3755,7 @@ $('.layer').change( function(event) {
         
         global_apptitle = app_name;
 
-        await mount_workspaces();
+        await mount_folder(workspace_path);
         try
         {
             deleteAllFiles(workspace_path+"/"+app_name);

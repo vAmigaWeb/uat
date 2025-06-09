@@ -1,5 +1,5 @@
-const vAmigaWeb_version="4.1.1"; //minimum requirement for snapshot version to be compatible
-const compatible_snapshot_version_format=/^(4[.]1[.](0|1))$/g
+const vAmigaWeb_version="4.2.1"; //minimum requirement for snapshot version to be compatible
+const compatible_snapshot_version_format=/^(4[.]2[.]1)$/g
 var current_browser_datasource='snapshots';
 var current_browser_command=null;
 
@@ -32,13 +32,50 @@ function load_workspace(name){
     }     
 }
 
+function zip_and_download_folder(zip_filename, fs_path) {
+    const zip = new JSZip();
+    function addPathToZip(path){
+        const files = FS.readdir(path);
+        files.forEach(function(file) {
+            if (file !== '.' && file !== '..') {
+                const filePath = `${path}/${file}`;
+                const zipFilePath = filePath.replace(fs_path, ''); // remove the base path for cleaner zip structure
+                const stats = FS.stat(filePath);
+                if (FS.isDir(stats.mode)) {
+                    addPathToZip(filePath)
+                }
+                else {
+                    const fileData = FS.readFile(filePath);
+                    zip.file(`${zipFilePath}`, fileData, { 
+                        compression: "DEFLATE",
+                        encodeFilename: (fileName)=>{return fileName},     
+                        platform: "DOS"               
+                    });
+                }
+            }
+        });
+    }
+    addPathToZip(fs_path);
+
+    zip.generateAsync({ type: "blob", compression: "DEFLATE" })
+        .then(function(content) {
+            const url = URL.createObjectURL(content);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = zip_filename;
+            link.click();
+            URL.revokeObjectURL(url);
+            deleteAllFiles(fs_path); // clean up
+        });
+}
+
 
 function zip_and_download_workspaces(zip_filename, names) {
     const zip = new JSZip();
     for(let name of names)
     {
         const workspace_path=`/vamiga_workspaces/${name}`
-         const files = FS.readdir(workspace_path);
+        const files = FS.readdir(workspace_path);
 
         files.forEach(function(file) {
             if (file !== '.' && file !== '..') {
@@ -668,7 +705,7 @@ var collectors = {
                 this.all_items= [];
                 this.loaded_feeds = [];
 
-                await mount_workspaces();
+                await mount_folder(workspace_path);
  
                 let dirs = FS.readdir(workspace_path);
                 console.log(dirs)
@@ -1003,7 +1040,10 @@ function deleteAllFiles(path) {
         if (file === '.' || file === '..') continue;
         let fullPath = path + '/' + file;
         let stats = FS.stat(fullPath);
-        if (!stats.isDir) {
+        if (FS.isDir(stats.mode)) {
+            deleteAllFiles(fullPath); 
+            FS.rmdir(fullPath);
+        } else {
             FS.unlink(fullPath);
         }
     }
