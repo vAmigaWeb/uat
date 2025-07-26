@@ -860,8 +860,24 @@ async function drop_handler(ev) {
     }
 }
 
-function handleFileInput(event) 
+async function handleFileInput(event) 
 {
+
+    const files = event.target.files;
+
+    if(files.length>1)
+    {//when multiple files are selected, we import as hdf
+        for (const file of files) {
+                
+            console.log(`File: ${file.name}, Path: ${file.webkitRelativePath}, Size: ${file.size} bytes`);
+
+            let file_data = await file.arrayBuffer();
+            console.log(`File data length: ${file_data.byteLength}`);
+            console.log(file_data);
+        }
+
+    }
+
     var myForm = document.getElementById('theFileInput');
     var myfiles = myForm.elements['theFileDialog'].files;
     for (var i=0; i < myfiles.length; i++) {
@@ -1203,6 +1219,21 @@ function sync_fs(populate) {
 }
 
 
+function exportUint8ArrayToFile(uint8Array, filename, mimeType = "application/octet-stream") {
+    const blob = new Blob([uint8Array], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+
+    // Aufräumen
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
 
 async function prompt_for_drive(folder=false)
 {
@@ -1227,7 +1258,7 @@ async function prompt_for_drive(folder=false)
             setTimeout(()=>$("#div_drive_select").hide(),1000); 
         }
     }
-
+folder=true;
     if(folder)
     {
         $('#alert_import').show();
@@ -1259,6 +1290,8 @@ async function prompt_for_drive(folder=false)
                 ensureDirectoryExists(fs_path.substring(0, fs_path.lastIndexOf('/')));
                 FS.writeFile(fs_path, fileData);
                 total_size += fileData.length;
+                if(relativePath.includes("Freddy"))
+                    exportUint8ArrayToFile(fileData, relativePath, "application/octet-stream");
             }
         }
         file_slot_file_name = last_zip_archive_name.replace(".zip","").replace(".ZIP","");
@@ -4295,6 +4328,14 @@ $('.layer').change( function(event) {
         }
         else
         {
+            if(confirm("folder?"))
+            {
+                document.getElementById('theFileInput').elements['theFileDialog'].setAttribute("webkitdirectory", "webkitdirectory");
+            }
+            else
+            {
+                document.getElementById('theFileInput').elements['theFileDialog'].removeAttribute("webkitdirectory");   
+            }
             document.getElementById('theFileInput').elements['theFileDialog'].click();
         }
     }, false);
@@ -4307,7 +4348,7 @@ $('.layer').change( function(event) {
         drop_handler(e);
     }, false);
     document.getElementById('filedialog').addEventListener("change", function(e) {
-          handleFileInput();
+          handleFileInput(e);
     }, false);
 
     $("html").on('dragover', function(e) {dragover_handler(e.originalEvent); return false;}) 
