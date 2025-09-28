@@ -25,6 +25,9 @@ async function get_active_cache_name()
     return v!=null ? v:cache_name;
 }
 
+var bypass_cache=await get_active_cache_name();
+var useragent=self.navigator.userAgent.toLowerCase();
+
 //get messages from the web app
 self.addEventListener("message", async evt => {
   const client = evt.source;
