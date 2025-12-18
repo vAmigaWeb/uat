@@ -1,6 +1,6 @@
 const url_root_path= self.location.pathname.replace("/sw.js","");
 const core_version  = '4.3.1'; //has to be the same as the version in Emulator/config.h and vAmiga_browser.js
-const ui_version = '2025_09_23'+url_root_path.replace("/","_"); 
+const ui_version = '2025_12_18'+url_root_path.replace("/","_"); 
 const needs_shared_array_buffer=false; //true when vAmiga runs in separat worker thread
 const cache_name = `${core_version}@${ui_version}`;
 const settings_cache = 'settings';
@@ -24,13 +24,6 @@ async function get_active_cache_name()
     let v = await get_settings_cache_value('active_version');
     return v!=null ? v:cache_name;
 }
-
-var bypass_cache=false;
-try {
-    var is_safari_26=self.navigator.userAgent.toLowerCase().includes("version/26.0 safari");
-    bypass_cache=is_safari_26 && (await get_active_cache_name() < "4.3.1@2025_09_29");
-}
-catch {}
 
 //get messages from the web app
 self.addEventListener("message", async evt => {
@@ -88,8 +81,33 @@ self.addEventListener('activate', evt => {
 
 self.addEventListener('fetch', function(event){
   event.respondWith(async function () {
+
+      try {
+        let caches_keys = await caches.keys();
+        
+        let installed_versions = caches_keys.filter(c => c.includes('@'));
+        
+        if(url_root_path.includes("uat"))
+          installed_versions = installed_versions.filter(c => c.includes('uat'));
+        else
+          installed_versions = installed_versions.filter(c => !c.includes('uat'));
+
+        console.log("installed_versions:");
+        console.log(installed_versions);
+
+        //is already a version without the safari26 bug ? No? Force upgrade
+        let force_upgrade = installed_versions.every(c=> c < "4.3.1@2025_10_01");
+
+        console.log("force upgrade="+force_upgrade);
+
+        if(force_upgrade)
+          await set_settings_cache_value("active_version", cache_name);
+      } catch (err) {
+          console.error("Error checking cache version:", err);
+      }
+
       //is this url one that should not be cached at all ? 
-      if(!bypass_cache&&(
+      if(
         event.request.url.toLowerCase().startsWith('https://vamigaweb.github.io/doc')
         ||
         !(event.request.url.toLowerCase().startsWith('https://vamigaweb.github.io')
@@ -101,7 +119,7 @@ self.addEventListener('fetch', function(event){
         event.request.url.endsWith('run.html')
 	||
         event.request.url.endsWith('cache_me=false')
-      ))
+      )
       {
         console.log('sw: do not cache fetched resource: '+event.request.url);
         return fetch(event.request);
