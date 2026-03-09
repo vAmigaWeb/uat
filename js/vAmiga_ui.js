@@ -2543,6 +2543,8 @@ function InitWrappers() {
     let pencil_long_press_timeout = null;
     let pencil_last_x = 0;
     let pencil_last_y = 0;
+    let pencil_start_x = 0;
+    let pencil_start_y = 0;
     let pencil_port = 1;
     let pencil_left_button_pressed = false;
 
@@ -2552,6 +2554,8 @@ function InitWrappers() {
         pencil_pointer_id = e.pointerId;
         pencil_last_x = e.clientX;
         pencil_last_y = e.clientY;
+        pencil_start_x = e.clientX;
+        pencil_start_y = e.clientY;
         
         // Start a long-press timer for button hold (~1 second)
         pencil_long_press_timeout = setTimeout(() => {
@@ -2570,11 +2574,19 @@ function InitWrappers() {
         
         // Send mouse movement
         Module._wasm_mouse(pencil_port, movementX, movementY);
+  
         
-        // If long-press timer is still active, clear it (movement cancels long-press)
-        if (pencil_long_press_timeout !== null && !pencil_left_button_pressed) {
-            clearTimeout(pencil_long_press_timeout);
-            pencil_long_press_timeout = null;
+
+        let dX = e.clientX - pencil_start_x;
+        let dY = e.clientY - pencil_start_y;
+  
+        if(Math.sqrt(dX*dX + dY*dY) > 20)
+        {
+            // If long-press timer is still active, clear it (movement cancels long-press)
+            if (pencil_long_press_timeout !== null && !pencil_left_button_pressed) {
+                clearTimeout(pencil_long_press_timeout);
+                pencil_long_press_timeout = null;
+            }
         }
         
         pencil_last_x = e.clientX;
@@ -2591,7 +2603,9 @@ function InitWrappers() {
             
             // Short tap: send single click
             Module._wasm_mouse_button(pencil_port, 1, 1/* down */);
-            Module._wasm_mouse_button(pencil_port, 1, 0/* up */);
+            setTimeout(() => {
+                Module._wasm_mouse_button(pencil_port, 1, 0/* up */);
+            }, 150);
         } else if (pencil_left_button_pressed) {
             // Release long-press button
             Module._wasm_mouse_button(pencil_port, 1, 0/* up */);
