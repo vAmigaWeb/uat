@@ -5,6 +5,8 @@
   --lightgray: #d8d8d8;
 }
 :root {
+    --keyboard_bottom_margin: 0px;
+    --keycap_zoom: 1.0;
     --keycap_size: calc(calc(calc(100vw / var(--keycap_columns)) *4) * var(--keycap_zoom));
 }
 #keyboard_grid {
@@ -65,6 +67,7 @@
     height: 30px;
     border-radius: 5px;
     min-width: 64px;
+    white-space: nowrap;
 }
 
 [data-theme="dark"] #drop_zone {
@@ -87,6 +90,7 @@ body
 {
     user-select: none;
     -webkit-user-select: none;
+    touch-action: manipulation;
     overflow:hidden;
     overscroll-behavior: none; /* blocks swipe navigation */
     background-color: var(--lighterbg) !important;
@@ -165,10 +169,14 @@ background-color: var(--green) !important;
 {
     font-size: 1.2rem !important;
     opacity: 0.7 !important;
-    padding-top: 0.05rem;
-    padding-bottom: 0.05rem;
     z-index: 20;
     user-select: none;
+    --tx: 0;
+    --ty: 0;
+    transform: translate3d(var(--tx), var(--ty), 0);
+    padding: var(--padding) max(0.5rem, var(--padding)) var(--padding) max(0.5rem, var(--padding));
+    --padding: 0.05rem;
+    --scale_factor: min(1, calc( calc((var(--padding) / 4rem)) * 0.2));
 }
 
 [data-theme="dark"] .custom-select {
@@ -253,6 +261,12 @@ color: #aaa !important;
 
     width: 100vw;
 }
+#button_show_menu {
+    position: fixed; 
+    top:6px; 
+    left:calc(env(safe-area-inset-left) / 2);
+    z-index:200;    
+}
 #navgrid {
     display: grid;
     grid-template-columns: 1fr auto;
@@ -265,6 +279,7 @@ color: #aaa !important;
     grid-template-columns: repeat(auto-fit, minmax(36px, auto)); /* Responsive grid for left side */
     gap: 0px;
     justify-content: start;
+    margin-left: calc(env(safe-area-inset-left) / 2);
 }
 
 .left > *, .right > * {
@@ -273,6 +288,12 @@ color: #aaa !important;
     justify-content: center;
     height: 45px;
 }
+.left > * {
+    min-width: 45px;
+    margin-left: 4px;
+    margin-right: 4px;
+}
+
 #theFileInput {
     grid-column: span 2;
 }
@@ -283,6 +304,7 @@ color: #aaa !important;
     gap: 1px;
     justify-content: end;
     padding-right: 2px;
+    margin-right: calc(env(safe-area-inset-right) / 2);
 }
 
 @media (max-width: 600px) {
@@ -368,6 +390,8 @@ color: #aaa !important;
     outline: none;
     overflow-y: auto;
     opacity: 1.0;
+    padding-left: calc(env(safe-area-inset-left) * 2.25);
+    padding-right: calc(env(safe-area-inset-right) * 2.25);
 }
 
 
@@ -489,6 +513,11 @@ button[id^="detail_run"] {
     background-color: #5a6268;
 }
 
+[id^="button_Enter"]:hover, [id^="button_Enter"]:focus, [id^="button_Enter"]:active {
+   background-color: var(--gray);
+}
+
+
 .keycap {
     font-size:calc(var(--keycap_size) / 2.5);
 }
@@ -499,17 +528,81 @@ button[id^="detail_run"] {
 .g-4 { grid-column: auto / span 4 }
 .g-5 { grid-column: auto / span 5 }
 .g-6 { grid-column: auto / span 6 }
+.g-7 { grid-column: auto / span 7 }
 .g-8 { grid-column: auto / span 8 }
+.g-9 { grid-column: auto / span 9 }
+.g-10 { grid-column: auto / span 10 }
 .g-11 { grid-column: auto / span 11 }
+.g-15 { grid-column: auto / span 15 }
+
 .g-32 { grid-column: auto / span 32 }
 
 [shift-keys="pressed"] .keycap {
     font-size:calc(var(--keycap_size) / 4.5);
 }
-
-[key-state="pressed"] {
-    box-shadow: inset 0 0 0.1em white, 0em 0em 3em white;
+@keyframes pressedAnimation {
+  0%   { transform: scale(1.0); }
+  40%  { transform: scale(0.8); }
+  50%  { transform: scale(1.2); }
+  65%  { transform: scale(1.35);}
+  100% { transform: scale(1.25); }
 }
+
+@keyframes releasedAnimation {
+  0%   { transform: scale(1.25); }
+  25%  { transform: scale(1.35); }
+  40%  { transform: scale(0.92); }
+  50%  { transform: scale(1.04); }
+  65%  { transform: scale(0.97); }
+  100% { transform: scale(1); }
+}
+
+@keyframes pressedSpaceAnimation {
+  0%   { transform: scale(1.0); }
+  40%  { transform: scale(0.98); }
+  50%  { transform: scale(1.04); }
+  65%  { transform: scale(1.08);}
+  100% { transform: scale(1.06); }
+}
+
+@keyframes releasedSpaceAnimation {
+  0%   { transform: scale(1.06); }
+  25%  { transform: scale(1.04); }
+  40%  { transform: scale(0.97); }
+  50%  { transform: scale(1.01); }
+  65%  { transform: scale(0.99); }
+  100% { transform: scale(1); }
+}
+
+.keycap_base[key-state="pressed"] {
+    box-shadow: inset 0 0 0.1em white, 0em 0em 3em white;
+    animation: pressedAnimation 0.2s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+    z-index: 1000;
+}
+
+.keycap_base[key-state=""] {
+    animation: releasedAnimation 0.6s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+}
+
+#button_Space[key-state="pressed"] {
+    box-shadow: inset 0 0 0.1em white, 0em 0em 3em white;
+    animation: pressedSpaceAnimation 0.2s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+}
+
+#button_Space[key-state=""] {
+    animation: releasedSpaceAnimation 0.6s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+}
+
+[id^="button_Enter"][key-state="pressed"] {
+    box-shadow: none;
+    animation: pressedSpaceAnimation 0.2s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+    background-color: var(--blue) !important;
+}
+
+[id^="button_Enter"][key-state=""] {
+    animation: releasedSpaceAnimation 0.6s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+}
+
 
 .darkkey {
     background-color: rgb(78,87,95);
@@ -820,3 +913,47 @@ input[type="range"]::-moz-range-thumb {
     padding-right: 10px;
 }
 
+
+@keyframes popBounce {
+  0%   { transform: scale(0.6); }
+  25%  { transform: scale(1.4); }
+  40%  { transform: scale(0.9); }
+  50%  { transform: scale(1.05); }
+  65%  { transform: scale(0.95); }
+  100% { transform: scale(1); }
+}
+
+.pop {
+    animation: popBounce 0.6s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+}
+
+[id^="img_snap_"] {
+    width: auto;
+    height: auto;
+}
+
+@keyframes action_buttons_press_anim {
+  0%   { transform: translate3d(var(--tx), var(--ty), 0) scale(1); }
+  40%  { transform: translate3d(var(--tx), var(--ty), 0) scale(0.93); }
+  50%  { transform: translate3d(var(--tx), var(--ty), 0) scale(1.03); }
+  65%  { transform: translate3d(var(--tx), var(--ty), 0) scale(1.07);}
+  100% { transform: translate3d(var(--tx), var(--ty), 0) scale(1.05);}
+}
+
+@keyframes action_buttons_release_anim {
+  0%   { transform: translate3d(var(--tx), var(--ty), 0) scale(1.05); }
+  25%  { transform: translate3d(var(--tx), var(--ty), 0) scale(1.08); }
+  40%  { transform: translate3d(var(--tx), var(--ty), 0) scale(0.98); }
+  50%  { transform: translate3d(var(--tx), var(--ty), 0) scale(1.02); }
+  65%  { transform: translate3d(var(--tx), var(--ty), 0) scale(0.99); }
+  100% { transform: translate3d(var(--tx), var(--ty), 0) scale(1); }
+}
+
+
+
+.custom_key[key-state="pressed"] {
+    animation: action_buttons_press_anim 0.2s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+}
+.custom_key[key-state=""] {
+    animation: action_buttons_release_anim 0.6s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+}

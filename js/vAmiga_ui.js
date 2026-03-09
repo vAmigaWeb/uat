@@ -102,6 +102,32 @@ async function load_all_sounds()
 load_all_sounds();
 df0_poll_sound=true;
 
+add_click=function(element, handler) {
+    window.app = window.app || {};
+    Object.defineProperty(window.app, element+"_click", {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value: handler
+    });
+
+    let btn =document.getElementById(element)
+    let animating = false;
+    btn.addEventListener('animationend', () => {
+        btn.classList.remove('pop');
+        animating = false;
+    });
+    btn.addEventListener("pointerup",
+     function () {
+        if (!animating) {
+          animating = true;
+          // void btn.offsetWidth; 
+            btn.classList.add("pop");
+        };
+        handler();
+    }); 
+}
+
 const load_script= (url) => {
     return new Promise(resolve =>
     {
@@ -355,9 +381,12 @@ async function load_parameter_link()
     {
         parameter_link_mount_in_df0=parameter_link.match(/[.](adf|hdf|dms|exe|st)$/i);
         //get_data_collector("csdb").run_link("call_parameter", 0,parameter_link);            
+        $('#alert_wait').show().find("span:first").text(`looking for '${parameter_link}'`);
         let response = await fetch(parameter_link);
         file_slot_file_name = decodeURIComponent(response.url.match(".*/(.*)$")[1]);
+        $('#alert_wait').find("span:first").text(`downloading '${file_slot_file_name}'`);
         file_slot_file = new Uint8Array( await response.arrayBuffer());
+        $('#alert_wait').hide().find("span:first").text("loading please wait ...");
 
         configure_file_dialog(reset=true);
     }
@@ -419,7 +448,7 @@ function message_handler_queue_worker(msg, data, data2)
                 if(call_param_navbar=='hidden')
                 {
                     setTimeout(function(){
-                        $("#button_show_menu").click();
+                        app.button_show_menu_click();
                     },500);
                 }
                 let url = await load_parameter_link();
@@ -543,7 +572,7 @@ function message_handler_queue_worker(msg, data, data2)
         let cause = msg == "MSG_SNAPSHOT_RESTORED" ? "(snapshot)":"(workspace)";
 
         //override loaded warp setting
-        wasm_set_warp( warp_switch.prop('checked') ? 0 /*auto*/:1/*never*/)
+        wasm_set_warp( warp_switch.prop('checked') ? 1 : 0)
 
         let v=wasm_get_config_item("BLITTER.ACCURACY");
         $(`#button_OPT_BLITTER_ACCURACY`).text(`blitter accuracy=${v} ${cause}`);
@@ -1447,6 +1476,10 @@ function keydown(e) {
             {
                 running_script.action_button_released = false;
             }
+
+            let on_screen_button = document.getElementById("ck"+action_button.id);
+            on_screen_button?.setAttribute('key-state', 'pressed');
+
             execute_script(action_button.id, action_button.lang, action_button.script);
             return;
         }
@@ -1499,6 +1532,8 @@ function keyup(e) {
            || action_button.key == serialized_code)
         {
             get_running_script(action_button.id).action_button_released = true;
+            let on_screen_button = document.getElementById("ck"+action_button.id);
+            on_screen_button?.setAttribute('key-state', '');
             return;
         }
     }
@@ -1866,7 +1901,6 @@ function restore_manual_state(port)
 
 
 function InitWrappers() {
-    try{add_pencil_support_for_elements_which_need_it();} catch(e) {console.error(e)}
     wasm_loadfile = function (file_name, file_buffer, drv_number=0) {
         let file_slot_wasmbuf = Module._malloc(file_buffer.byteLength);
         Module.HEAPU8.set(file_buffer, file_slot_wasmbuf);
@@ -2270,7 +2304,7 @@ function InitWrappers() {
         {
             if(required_roms_loaded)
             {
-                $('#button_run').click();
+                app.button_run_click();
                 window.parent.postMessage({ msg: 'render_run_state', value: is_running()},"*");
             }
         }
@@ -2503,6 +2537,112 @@ function InitWrappers() {
         Module._wasm_mouse_button(mouse_port,e.which, 0/* up */);
     }
 
+    // === Pencil/Pen input handler ===
+    let pencil_pointer_id = null;
+    let pencil_touch_pointer_id = null;
+    let pencil_long_press_timeout = null;
+    let pencil_last_x = 0;
+    let pencil_last_y = 0;
+    let pencil_port = 1;
+    let pencil_left_button_pressed = false;
+
+    function emulate_mouse_pencil_down(e) {
+        if (e.pointerType !== 'pen') return;
+        
+        pencil_pointer_id = e.pointerId;
+        pencil_last_x = e.clientX;
+        pencil_last_y = e.clientY;
+        
+        // Start a long-press timer for button hold (~1 second)
+        pencil_long_press_timeout = setTimeout(() => {
+            // Long press detected: activate left mouse button hold
+            Module._wasm_mouse_button(pencil_port, 1, 1/* down */);
+            pencil_left_button_pressed = true;
+        }, 1000);
+    }
+
+    function emulate_mouse_pencil_move(e) {
+        if (e.pointerType !== 'pen' || pencil_pointer_id !== e.pointerId) return;
+        
+        // Calculate movement
+        let movementX = e.clientX - pencil_last_x;
+        let movementY = e.clientY - pencil_last_y;
+        
+        // Send mouse movement
+        Module._wasm_mouse(pencil_port, movementX, movementY);
+        
+        // If long-press timer is still active, clear it (movement cancels long-press)
+        if (pencil_long_press_timeout !== null && !pencil_left_button_pressed) {
+            clearTimeout(pencil_long_press_timeout);
+            pencil_long_press_timeout = null;
+        }
+        
+        pencil_last_x = e.clientX;
+        pencil_last_y = e.clientY;
+    }
+
+    function emulate_mouse_pencil_up(e) {
+        if (e.pointerType !== 'pen' || pencil_pointer_id !== e.pointerId) return;
+        
+        // Clear long-press timer if still running
+        if (pencil_long_press_timeout !== null) {
+            clearTimeout(pencil_long_press_timeout);
+            pencil_long_press_timeout = null;
+            
+            // Short tap: send single click
+            Module._wasm_mouse_button(pencil_port, 1, 1/* down */);
+            Module._wasm_mouse_button(pencil_port, 1, 0/* up */);
+        } else if (pencil_left_button_pressed) {
+            // Release long-press button
+            Module._wasm_mouse_button(pencil_port, 1, 0/* up */);
+            pencil_left_button_pressed = false;
+        }
+        
+        pencil_pointer_id = null;
+    }
+
+    function emulate_mouse_pencil_touch_down(e) {
+        // When a finger touches while pencil is active, prepare for right button
+        if (pencil_pointer_id !== null) {
+            pencil_touch_pointer_id = e.pointerId;
+        }
+    }
+
+    function emulate_mouse_pencil_touch_up(e) {
+        // Check if this touch was coordinated with pencil for right-button click
+        if (e.pointerId === pencil_touch_pointer_id && pencil_pointer_id !== null) {
+            // Right button click
+            Module._wasm_mouse_button(pencil_port, 3, 1/* down */);
+            Module._wasm_mouse_button(pencil_port, 3, 0/* up */);
+            pencil_touch_pointer_id = null;
+        }
+    }
+
+    // Register pencil event listeners if pointer events are supported
+    if (window.PointerEvent) {
+        document.addEventListener('pointerdown', function(e) {
+            if (e.pointerType === 'pen') {
+                emulate_mouse_pencil_down(e);
+            } else if (e.pointerType === 'touch' && pencil_pointer_id !== null) {
+                emulate_mouse_pencil_touch_down(e);
+            }
+        }, false);
+        
+        document.addEventListener('pointermove', function(e) {
+            if (e.pointerType === 'pen') {
+                emulate_mouse_pencil_move(e);
+            }
+        }, false);
+        
+        document.addEventListener('pointerup', function(e) {
+            if (e.pointerType === 'pen') {
+                emulate_mouse_pencil_up(e);
+            } else if (e.pointerType === 'touch' && e.pointerId === pencil_touch_pointer_id) {
+                emulate_mouse_pencil_touch_up(e);
+            }
+        }, false);
+    }
+
     //--
     mouse_touchpad_port=1;
     mouse_touchpad_move_touch=null;
@@ -2514,54 +2654,28 @@ function InitWrappers() {
         for (var i=0; i < e.changedTouches.length; i++) {
             let touch = e.changedTouches[i];
         
-            if(mouse_touchpad_pattern=='mouse touchpad')
-            {
-                let mouse_touchpad_move_area= touch.clientX > window.innerWidth/10 &&
-                touch.clientX < window.innerWidth-window.innerWidth/10;
-                let mouse_touchpad_button_area=!mouse_touchpad_move_area;
+            let mouse_touchpad_move_area= left_handed ? 
+                    touch.clientX >= window.innerWidth/2:
+                    touch.clientX < window.innerWidth/2;
+            let mouse_touchpad_button_area=!mouse_touchpad_move_area;
 
-                if(mouse_touchpad_button_area)
+            if(mouse_touchpad_button_area)
+            {
+                let left_button = touch.clientY >= window.innerHeight/2;
+                if(left_button)
                 {
-                    let left_button = touch.clientX < window.innerWidth/10;
-                    if(left_button)
-                    {
-                        mouse_touchpad_left_button_touch=touch; 
-                        Module._wasm_mouse_button(mouse_touchpad_port,1, 1/* down */);                
-                    }
-                    else
-                    {
-                        mouse_touchpad_right_button_touch=touch; 
-                        Module._wasm_mouse_button(mouse_touchpad_port,3, 1/* down */);                
-                    }
+                    mouse_touchpad_left_button_touch=touch; 
+                    Module._wasm_mouse_button(mouse_touchpad_port,1, 1/* down */);                
                 }
                 else
                 {
-                    mouse_touchpad_move_touch=touch;
+                    mouse_touchpad_right_button_touch=touch; 
+                    Module._wasm_mouse_button(mouse_touchpad_port,3, 1/* down */);                
                 }
             }
-            else if(mouse_touchpad_pattern=='mouse touchpad2')
+            else
             {
-                let mouse_touchpad_move_area= touch.clientX < window.innerWidth/2;
-                let mouse_touchpad_button_area=!mouse_touchpad_move_area;
-
-                if(mouse_touchpad_button_area)
-                {
-                    let left_button = touch.clientY >= window.innerHeight/2;
-                    if(left_button)
-                    {
-                        mouse_touchpad_left_button_touch=touch; 
-                        Module._wasm_mouse_button(mouse_touchpad_port,1, 1/* down */);                
-                    }
-                    else
-                    {
-                        mouse_touchpad_right_button_touch=touch; 
-                        Module._wasm_mouse_button(mouse_touchpad_port,3, 1/* down */);                
-                    }
-                }
-                else
-                {
-                    mouse_touchpad_move_touch=touch;
-                }
+                mouse_touchpad_move_touch=touch;
             }
 
         }
@@ -2607,7 +2721,7 @@ function InitWrappers() {
     {
         if(call_param_touch==true)
         {
-            port1="mouse touchpad2";
+            port1="mouse touchpad";
             $('#port1').val(port1);
             mouse_touchpad_pattern=port1;
             mouse_touchpad_port=1;
@@ -2628,9 +2742,11 @@ function InitWrappers() {
         }
     }
     //--
-
-    installKeyboard();
-    $("#button_keyboard").click(function(){
+    let keyboard_layout = load_setting('keyboard_layout', !navigator.language.toLowerCase().includes('us'));
+    installKeyboard(keyboard_layout); 
+    reset_keyboard();
+    add_click("button_keyboard",function(){
+        $('#virtual_keyboard').collapse('toggle');
         setTimeout( scaleVMCanvas, 500);
         setTimeout( hide_all_tooltips, 1000);
     });
@@ -2652,6 +2768,10 @@ function InitWrappers() {
     $('#navbar').on('shown.bs.collapse', function () { 
     });
 
+    add_click("button_show_menu", function() {
+        $('#navbar').collapse('toggle');
+    });
+
     burger_time_out_handle=null
     burger_button=null;
     menu_button_fade_in = function () {
@@ -2671,19 +2791,16 @@ function InitWrappers() {
             {
                 burger_button.fadeTo( "slow", 0.0 );
             }
-        },5000);    
+        },4500);    
     };
 
     //make the menubutton not visible until a click or a touch
     menu_button_fade_in();
     burger_button.hover(function(){ menu_button_fade_in();});
 
-    window.addEventListener("click", function() {
+    window.addEventListener("pointerdown", function() {
         menu_button_fade_in();
     });
-    $("#canvas").on({ 'touchstart' : function() {
-        menu_button_fade_in();
-    }});
 
 //----
     auto_selecting_app_title_switch = $('#auto_selecting_app_title_switch');
@@ -3386,7 +3503,7 @@ if(document.fullscreenEnabled)
         );
     });
 
-    fullscreen_switch.click( ()=>{	
+    add_click("button_fullscreen", ()=>{	
         if(!document.fullscreenElement)
             document.documentElement.requestFullscreen({navigationUI: "hide"});
         else
@@ -3397,6 +3514,17 @@ else
 {
     fullscreen_switch.hide();
 }
+//------
+add_click("btn_activity_monitor", ()=>{
+    action('activity_monitor');
+});
+
+//------
+
+add_click("button_settings", function() {
+    $('#modal_settings').modal('show');
+});
+
 //------
 
 $('.layer').change( function(event) {
@@ -3478,16 +3606,16 @@ $('.layer').change( function(event) {
             return true;
         }
     );
-    document.getElementById('button_reset').onclick = function() {
+    add_click('button_reset', function() {
         $("#modal_reset").modal('show');
-    }
+    });
     document.getElementById('button_reset_confirmed').onclick = function() {
         setTimeout(release_modifiers, 0);
         wasm_reset();
 
         if(!is_running())
         {
-            $("#button_run").click();
+            app.button_run_click();
         }
         $("#modal_reset").modal('hide').blur();
     }
@@ -3495,7 +3623,7 @@ $('.layer').change( function(event) {
 
     running=false;
     emulator_currently_runs=false;
-    $("#button_run").click(function() {
+    add_click("button_run", function() {
         hide_all_tooltips();
         if(running)
         {        
@@ -3522,7 +3650,7 @@ $('.layer').change( function(event) {
         //document.getElementById('canvas').focus();
     });
     
-    $("#button_ff").click(()=> {
+    add_click("button_ff",()=> {
         action('toggle_warp'); 
         hide_all_tooltips();
     });
@@ -3580,7 +3708,7 @@ $('.layer').change( function(event) {
 
         if(!is_running())
         {
-            $("#button_run").click();
+            app.button_run_click();
         }
 
         if(reset_before_load == false)
@@ -3654,7 +3782,7 @@ $('.layer').change( function(event) {
         }
     });
 
-    document.getElementById('button_take_snapshot').onclick = function() 
+    add_click('button_take_snapshot', function() 
     {       
         wasm_halt();
         $("#modal_take_snapshot").modal('show');
@@ -3683,7 +3811,7 @@ $('.layer').change( function(event) {
                 $("#button_export_hd"+dfn+"_folder").hide();
             }
         }
-    }
+    });
     for(var dn=0; dn<4; dn++)
     {
         $('#button_export_df'+dn).click(function() 
@@ -3879,7 +4007,7 @@ $('.layer').change( function(event) {
             $('#button_speed_toggle').show();
  
         current_speed=100;
-        $('#button_speed_toggle').click();
+        app.button_speed_toggle_click();
         
         save_setting('frame_sync', new_speed);
     }
@@ -3890,7 +4018,7 @@ $('.layer').change( function(event) {
         $("#modal_settings").focus();
     });
     
-    $('#button_speed_toggle').click(function () 
+    add_click('button_speed_toggle',function () 
     {
         hide_all_tooltips();
         if(current_speed==100)
@@ -3905,7 +4033,7 @@ $('.layer').change( function(event) {
                 <path style='opacity:${current_speed == 100 ? 1:1}'  d="M8 2a.5.5 0 0 1 .5.5V4a.5.5 0 0 1-1 0V2.5A.5.5 0 0 1 8 2M3.732 3.732a.5.5 0 0 1 .707 0l.915.914a.5.5 0 1 1-.708.708l-.914-.915a.5.5 0 0 1 0-.707M2 8a.5.5 0 0 1 .5-.5h1.586a.5.5 0 0 1 0 1H2.5A.5.5 0 0 1 2 8m9.5 0a.5.5 0 0 1 .5-.5h1.5a.5.5 0 0 1 0 1H12a.5.5 0 0 1-.5-.5m.754-4.246a.39.39 0 0 0-.527-.02L7.547 7.31A.91.91 0 1 0 8.85 8.569l3.434-4.297a.39.39 0 0 0-.029-.518z"/>
                 <path style='opacity:${current_speed == 100 ? 1:1}' fill-rule="evenodd" d="M6.664 15.889A8 8 0 1 1 9.336.11a8 8 0 0 1-2.672 15.78zm-4.665-4.283A11.95 11.95 0 0 1 8 10c2.186 0 4.236.585 6.001 1.606a7 7 0 1 0-12.002 0"/>
             </svg>
-            <div style="font-size: x-small;position: absolute;top: -2px;width:44px;text-align:center;margin-left: -11px;">
+            <div style="font-size: x-small;position: absolute;top:-4px;width:44px;text-align:center;margin-left: -11px;">
             ${current_speed>4?'&nbsp;'+current_speed+'%': current_speed<0?'&frac12;vsync':current_speed==1?'vsync':current_speed+'vsync' }
             </div>
             <div id="host_fps" style="font-size: xx-small;position: absolute;top: 32px;width:44px;text-align:center;margin-left: -11px;">
@@ -3919,7 +4047,7 @@ $('.layer').change( function(event) {
 //        $("#modal_settings").focus();
     });
     set_speed(load_setting("frame_sync","100%"));
-    $('#button_speed_toggle').click();
+    app.button_speed_toggle_click();
 //--
     set_run_ahead = function (run_ahead) {
         $("#button_run_ahead").text("run ahead = "+run_ahead);
@@ -4194,10 +4322,19 @@ $('.layer').change( function(event) {
 
     setup_browser_interface();
 
+    add_click('port1', function() {
+     document.getElementById('port1').focus();
+    });
+    add_click('port2', function() {
+     document.getElementById('port2').focus();
+    });
+
     document.getElementById('port1').onchange = function() {
         port1 = document.getElementById('port1').value; 
         if(port1 == port2 || 
-           port1.indexOf("touch")>=0 && port2.indexOf("touch")>=0)
+           port1.indexOf("touch")>=0 && port2.indexOf("touch")>=0 ||
+           port1 == 'pencil' && (port2 == 'pencil' || port2.indexOf("touch")>=0) ||
+           port2 == 'pencil' && port1.indexOf("touch")>=0)
         {
             port2 = 'none';
             document.getElementById('port2').value = 'none';
@@ -4238,12 +4375,22 @@ $('.layer').change( function(event) {
             document.removeEventListener('touchmove',emulate_mouse_touchpad_move, false);
             document.removeEventListener('touchend',emulate_mouse_touchpad_end, false);
         }
+        if(port1 == 'pencil')
+        {
+            pencil_port = 1;
+        }
+        else if(port2 != 'pencil')
+        {
+            pencil_port = null;
+        }
         this.blur();
     }
     document.getElementById('port2').onchange = function() {
         port2 = document.getElementById('port2').value;
         if(port1 == port2 || 
-           port1.indexOf("touch")>=0 && port2.indexOf("touch")>=0)
+           port1.indexOf("touch")>=0 && port2.indexOf("touch")>=0 ||
+           port2 == 'pencil' && (port1 == 'pencil' || port1.indexOf("touch")>=0) ||
+           port1 == 'pencil' && port2.indexOf("touch")>=0)
         {
             port1 = 'none';
             document.getElementById('port1').value = 'none';
@@ -4284,16 +4431,56 @@ $('.layer').change( function(event) {
             document.removeEventListener('touchmove',emulate_mouse_touchpad_move, false);
             document.removeEventListener('touchend',emulate_mouse_touchpad_end, false);
         }
+        if(port2 == 'pencil')
+        {
+            pencil_port = 2;
+        }
+        else if(port1 != 'pencil')
+        {
+            pencil_port = null;
+        }
         this.blur();
     }
 
+    // Handle touch_swap_move_button switch to update touch joystick option texts
+    touch_swap_move_button_switch = document.getElementById('touch_swap_move_button');
+    if(touch_swap_move_button_switch) {
+        const updateTouchLayoutOptions = () => {
+            const j_option1 = document.getElementById('touch_joystick1');
+            const j_option2 = document.getElementById('touch_joystick2');
+            const m_option1 = document.getElementById('touch_mouse1');
+            const m_option2 = document.getElementById('touch_mouse2');
+            
+            left_handed = touch_swap_move_button_switch.checked;
+
+            if(left_handed) {
+                j_option1.textContent = j_option2.textContent = 'touch joystick (fire|move)';
+                m_option1.textContent = m_option2.textContent = 'touch mouse (btn/btn|move)';
+
+            } else {
+                j_option2.textContent = j_option1.textContent = 'touch joystick (move|fire)';
+                m_option1.textContent = m_option2.textContent = 'touch mouse (move|btn/btn)';
+            }
+            save_setting('touch_swap_move_button', touch_swap_move_button_switch.checked);
+
+
+            document.getElementById('touch_swap_move_button_false').style.display=left_handed?"none":"inherit";
+            document.getElementById('touch_swap_move_button_true').style.display=left_handed?"inherit":"none";
+        };
+        
+        left_handed = load_setting('touch_swap_move_button', false);
+        touch_swap_move_button_switch.checked = left_handed;
+        updateTouchLayoutOptions();
+        
+        touch_swap_move_button_switch.addEventListener('change', updateTouchLayoutOptions);
+    }
 
     document.getElementById('theFileInput').addEventListener("submit", function(e) {
         e.preventDefault();
         handleFileInput();
     }, false);
 
-    document.getElementById('drop_zone').addEventListener("click", function(e) {
+    add_click('drop_zone', function(e) {
         if(last_zip_archive_name != null)
         {
             file_slot_file_name = last_zip_archive_name;
@@ -4302,9 +4489,9 @@ $('.layer').change( function(event) {
         }
         else
         {
-            document.getElementById('theFileInput').elements['theFileDialog'].click();
+            document.getElementById('filedialog').click();
         }
-    }, false);
+    });
 
     document.getElementById('drop_zone').addEventListener("dragover", function(e) {
         dragover_handler(e);
@@ -4459,8 +4646,7 @@ $('.layer').change( function(event) {
     if(bEnableCustomKeys)
     {
         create_new_custom_key = false;
-        $("#button_custom_key").click(
-            function(e) 
+        add_click("button_custom_key", function(e) 
             {  
                 create_new_custom_key = true;
                 $('#input_button_text').val('');
@@ -5152,10 +5338,6 @@ release_key('ControlLeft');`;
             }
 
             var btn_html='<button id="ck'+element.id+'" class="btn btn-secondary btn-sm custom_key" style="position:absolute;'+element.position+';';
-            if(element.currentX)
-            {
-                btn_html += 'transform:translate3d(' + element.currentX + 'px,' + element.currentY + 'px,0);';
-            } 
             if(element.transient)
             {
                 btn_html += 'border-width:3px;border-color: rgb(100, 133, 188);'; //cornflowerblue=#6495ED
@@ -5166,7 +5348,7 @@ release_key('ControlLeft');`;
             }
             if(element.padding != undefined && element.padding != 'default')
             {
-                btn_html += 'padding:'+element.padding+'em;';
+                btn_html += '--padding:'+element.padding+'em;';
             }
             if(element.opacity != undefined && element.opacity != 'default')
             {
@@ -5183,6 +5365,10 @@ release_key('ControlLeft');`;
             action_scripts["ck"+element.id] = element.script;
 
             let custom_key_el = document.getElementById(`ck${element.id}`);
+            if(element.currentX) {
+                custom_key_el.style.setProperty('--tx', element.currentX + 'px');
+                custom_key_el.style.setProperty('--ty', element.currentY + 'px');
+            }
             if(!movable_action_buttons)
             {//when action buttons locked
              //process the mouse/touch events immediatly, there is no need to guess the gesture
@@ -5197,6 +5383,7 @@ release_key('ControlLeft');`;
                     {
                       running_script.action_button_released = false;
                     }
+                    custom_key_el.setAttribute('key-state', 'pressed');
                     execute_script(element.id, element.lang, action_script);
 
                 };
@@ -5205,6 +5392,7 @@ release_key('ControlLeft');`;
                     e.stopImmediatePropagation();
                     e.preventDefault();
                     get_running_script(element.id).action_button_released = true;
+                    custom_key_el.setAttribute('key-state', '');
                 };
 
                 custom_key_el.addEventListener("pointerdown", (e)=>{
@@ -5228,6 +5416,8 @@ release_key('ControlLeft');`;
                         return;
     
                     var action_script = action_scripts['ck'+element.id];
+                    custom_key_el.setAttribute('key-state', 'pressed');
+                    setTimeout(() => custom_key_el.setAttribute('key-state', ''), 200);
                     get_running_script(element.id).action_button_released = true;
                     execute_script(element.id, element.lang, action_script);
                 });
@@ -5405,7 +5595,8 @@ release_key('ControlLeft');`;
 
     function setTranslate(xPos, yPos, el) {
      //   console.log('translate: x'+xPos+' y'+yPos+ 'el=' +el.id);  
-      el.style.transform = "translate3d(" + xPos + "px, " + yPos + "px, 0)";
+      el.style.setProperty('--tx', xPos + 'px');
+      el.style.setProperty('--ty', yPos + 'px');
     }
 
 //---- end custom key ----
@@ -5435,7 +5626,7 @@ function setTheme() {
 
 
 
-
+    left_handed = true;
     function register_v_joystick()
     {
         if(v_joystick!=null)
@@ -5455,8 +5646,9 @@ function setTheme() {
             if(touches !== undefined)
                 touch= touches[0];
             else
-                touch = event;//mouse emulation    
-            return touch.pageX < window.innerWidth/2;  
+                touch = event;//mouse emulation
+            const is_left_half = touch.pageX < window.innerWidth / 2;
+            return left_handed ? !is_left_half : is_left_half;
         });
        
         // one on the right of the screen
@@ -5474,7 +5666,8 @@ function setTheme() {
                 touch= touches[0];
             else
                 touch = event;//mouse emulation    
-            return touch.pageX >= window.innerWidth/2;
+            const is_right_half = touch.pageX >= window.innerWidth / 2;
+            return left_handed ? !is_right_half : is_right_half;
         });
     }
 
@@ -5591,17 +5784,6 @@ function add_pencil_support_to_childs(element) {
         if (child.nodeType === Node.ELEMENT_NODE)
           add_pencil_support(child);
     });  
-}
-function add_pencil_support_for_elements_which_need_it()
-{
-    let elements_which_need_pencil_support=
-        ["button_show_menu","button_run", "button_reset", "button_take_snapshot",
-        "button_snapshots", "button_keyboard", "button_custom_key", "drop_zone",
-        "button_fullscreen", "button_settings", "port1", "port2" ]
-    for(let element_id of elements_which_need_pencil_support)
-    {
-        add_pencil_support(document.getElementById(element_id));
-    }
 }
 
 function copy_to_clipboard(element) {
