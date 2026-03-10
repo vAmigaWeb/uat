@@ -2619,7 +2619,7 @@ function InitWrappers() {
     if (window.PointerEvent) {
         document.addEventListener('pointerdown', function(e) {
             console.log("pointerdown type="+e.pointerType);
-            element.setPointerCapture(e.pointerId);
+            document.setPointerCapture(e.pointerId);
             if (e.pointerType === 'pen') {
                 emulate_mouse_pencil_down(e);
             } else if (e.pointerType === 'touch') {
