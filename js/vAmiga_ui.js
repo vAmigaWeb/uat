@@ -2547,7 +2547,7 @@ function InitWrappers() {
     let pencil_start_y = 0;
     let pencil_port = 1;
     let pencil_left_button_pressed = false;
-
+    let pencil_mouse_button=1; // left button by default, can be switched to right button when touch is used together with pencil
     function emulate_mouse_pencil_down(e) {
         if (e.pointerType !== 'pen') return;
         
@@ -2560,7 +2560,7 @@ function InitWrappers() {
         // Start a long-press timer for button hold (~1 second)
         pencil_long_press_timeout = setTimeout(() => {
             // Long press detected: activate left mouse button hold
-            Module._wasm_mouse_button(pencil_port, 1, 1/* down */);
+            Module._wasm_mouse_button(pencil_port, pencil_mouse_button, 1/* down */);
             pencil_left_button_pressed = true;
         }, 1000);
     }
@@ -2602,13 +2602,13 @@ function InitWrappers() {
             pencil_long_press_timeout = null;
             
             // Short tap: send single click
-            Module._wasm_mouse_button(pencil_port, 1, 1/* down */);
+            Module._wasm_mouse_button(pencil_port, pencil_mouse_button, 1/* down */);
             setTimeout(() => {
-                Module._wasm_mouse_button(pencil_port, 1, 0/* up */);
+                Module._wasm_mouse_button(pencil_port, pencil_mouse_button, 0/* up */);
             }, 150);
         } else if (pencil_left_button_pressed) {
             // Release long-press button
-            Module._wasm_mouse_button(pencil_port, 1, 0/* up */);
+            Module._wasm_mouse_button(pencil_port, pencil_mouse_button, 0/* up */);
             pencil_left_button_pressed = false;
         }
         
@@ -2620,16 +2620,16 @@ function InitWrappers() {
         if (pencil_pointer_id !== null) {
             pencil_touch_pointer_id = e.pointerId;
         }
+        pencil_mouse_button = 3; // switch to right button when touch is used together with pencil
     }
 
     function emulate_mouse_pencil_touch_up(e) {
         // Check if this touch was coordinated with pencil for right-button click
         if (e.pointerId === pencil_touch_pointer_id && pencil_pointer_id !== null) {
             // Right button click
-            Module._wasm_mouse_button(pencil_port, 3, 1/* down */);
-            Module._wasm_mouse_button(pencil_port, 3, 0/* up */);
             pencil_touch_pointer_id = null;
         }
+        pencil_mouse_button = 1; // switch to left button when touch is used together with pencil
     }
 
     // Register pencil event listeners if pointer events are supported
