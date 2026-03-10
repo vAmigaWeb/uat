@@ -2548,9 +2548,6 @@ function InitWrappers() {
     let pencil_left_button_pressed = false;
     let pencil_mouse_button=1; // left button by default, can be switched to right button when touch is used together with pencil
     function emulate_mouse_pencil_down(e) {
-        if (e.pointerType !== 'pen') return;
-        
-        pencil_pointer_id = e.pointerId;
         pencil_last_x = e.clientX;
         pencil_last_y = e.clientY;
         pencil_start_x = e.clientX;
@@ -2567,8 +2564,7 @@ function InitWrappers() {
     }
 
     function emulate_mouse_pencil_move(e) {
-        if (e.pointerType !== 'pen' || pencil_pointer_id !== e.pointerId) return;
-        
+
         // Calculate movement
         let movementX = e.clientX - pencil_last_x;
         let movementY = e.clientY - pencil_last_y;
@@ -2594,10 +2590,7 @@ function InitWrappers() {
         pencil_last_y = e.clientY;
     }
 
-    function emulate_mouse_pencil_up(e) {
-        if (e.pointerType !== 'pen' || pencil_pointer_id !== e.pointerId) return;
-       
-
+    function emulate_mouse_pencil_up(e) {  
         // Clear long-press timer if still running
         if (pencil_long_press_timeout !== null) {
             clearTimeout(pencil_long_press_timeout);
@@ -2620,8 +2613,6 @@ function InitWrappers() {
                 Module._wasm_mouse_button(pencil_port, pencil_mouse_button, 0/* up */);
             }, 120);
         } 
-        
-        pencil_pointer_id = null;
     }
 
     // Register pencil event listeners if pointer events are supported
