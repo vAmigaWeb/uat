@@ -2553,6 +2553,9 @@ function InitWrappers() {
         pencil_start_x = e.clientX;
         pencil_start_y = e.clientY;
         
+        pencil_mouse_button = e.clientY >= window.innerHeight/2 ? 1 /* left button */ : 3 /* right button */;
+
+
         // Start a long-press timer for button hold (~1 second)
         pencil_long_press_timeout = setTimeout(() => {
             console.log("long click down="+pencil_mouse_button);
@@ -2619,30 +2622,23 @@ function InitWrappers() {
     if (window.PointerEvent) {
         document.addEventListener('pointerdown', function(e) {
             console.log("pointerdown type="+e.pointerType);
-            document.setPointerCapture(e.pointerId);
-            if (e.pointerType === 'pen') {
+//            if (e.pointerType === 'pen') {
                 emulate_mouse_pencil_down(e);
-            } else if (e.pointerType === 'touch') {
-                pencil_mouse_button = 3; // switch to right button when touch is used together with pencil
-                console.log("pencil_mouse_button="+pencil_mouse_button);
-            }
+//            }
         }, false);
         
         document.addEventListener('pointermove', function(e) {
-            if (e.pointerType === 'pen') {
+//            if (e.pointerType === 'pen') {
                 emulate_mouse_pencil_move(e);
-            }
+//            }
         }, false);
         
         document.addEventListener('pointerup', function(e) {
             console.log("pointerup type="+e.pointerType);
- 
-            if (e.pointerType === 'pen') {
+
+//            if (e.pointerType === 'pen') {
                 emulate_mouse_pencil_up(e);
-            } else if (e.pointerType === 'touch') {
-                pencil_mouse_button = 1; // switch back to left button when touch is used together with pencil
-                console.log("pencil_mouse_button="+pencil_mouse_button);
-            }
+//            }
         }, false);
     }
 
