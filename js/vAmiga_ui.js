@@ -2618,6 +2618,8 @@ function InitWrappers() {
     // Register pencil event listeners if pointer events are supported
     if (window.PointerEvent) {
         document.addEventListener('pointerdown', function(e) {
+            console.log("pointerdown type="+e.pointerType);
+            element.setPointerCapture(e.pointerId);
             if (e.pointerType === 'pen') {
                 emulate_mouse_pencil_down(e);
             } else if (e.pointerType === 'touch') {
@@ -2633,6 +2635,8 @@ function InitWrappers() {
         }, false);
         
         document.addEventListener('pointerup', function(e) {
+            console.log("pointerup type="+e.pointerType);
+ 
             if (e.pointerType === 'pen') {
                 emulate_mouse_pencil_up(e);
             } else if (e.pointerType === 'touch') {
