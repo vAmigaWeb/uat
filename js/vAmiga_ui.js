@@ -2539,7 +2539,6 @@ function InitWrappers() {
 
     // === Pencil/Pen input handler ===
     let pencil_pointer_id = null;
-    let pencil_touch_pointer_id = null;
     let pencil_long_press_timeout = null;
     let pencil_last_x = 0;
     let pencil_last_y = 0;
@@ -2559,6 +2558,8 @@ function InitWrappers() {
         
         // Start a long-press timer for button hold (~1 second)
         pencil_long_press_timeout = setTimeout(() => {
+            console.log("long click down="+pencil_mouse_button);
+
             // Long press detected: activate left mouse button hold
             Module._wasm_mouse_button(pencil_port, pencil_mouse_button, 1/* down */);
             pencil_left_button_pressed = true;
@@ -2595,22 +2596,30 @@ function InitWrappers() {
 
     function emulate_mouse_pencil_up(e) {
         if (e.pointerType !== 'pen' || pencil_pointer_id !== e.pointerId) return;
-        
+       
+
         // Clear long-press timer if still running
         if (pencil_long_press_timeout !== null) {
             clearTimeout(pencil_long_press_timeout);
             pencil_long_press_timeout = null;
-            
+        }
+        
+        if (pencil_left_button_pressed) {
+            // Release long-press button
+            console.log("long click release="+pencil_mouse_button);
+
+            Module._wasm_mouse_button(pencil_port, pencil_mouse_button, 0/* up */);
+            pencil_left_button_pressed = false;
+        }
+        else {
+            console.log("single click="+pencil_mouse_button);
+
             // Short tap: send single click
             Module._wasm_mouse_button(pencil_port, pencil_mouse_button, 1/* down */);
             setTimeout(() => {
                 Module._wasm_mouse_button(pencil_port, pencil_mouse_button, 0/* up */);
-            }, 150);
-        } else if (pencil_left_button_pressed) {
-            // Release long-press button
-            Module._wasm_mouse_button(pencil_port, pencil_mouse_button, 0/* up */);
-            pencil_left_button_pressed = false;
-        }
+            }, 120);
+        } 
         
         pencil_pointer_id = null;
     }
@@ -2622,6 +2631,7 @@ function InitWrappers() {
                 emulate_mouse_pencil_down(e);
             } else if (e.pointerType === 'touch') {
                 pencil_mouse_button = 3; // switch to right button when touch is used together with pencil
+                console.log("pencil_mouse_button="+pencil_mouse_button);
             }
         }, false);
         
@@ -2636,6 +2646,7 @@ function InitWrappers() {
                 emulate_mouse_pencil_up(e);
             } else if (e.pointerType === 'touch') {
                 pencil_mouse_button = 1; // switch back to left button when touch is used together with pencil
+                console.log("pencil_mouse_button="+pencil_mouse_button);
             }
         }, false);
     }
