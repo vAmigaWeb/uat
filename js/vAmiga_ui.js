@@ -2615,30 +2615,13 @@ function InitWrappers() {
         pencil_pointer_id = null;
     }
 
-    function emulate_mouse_pencil_touch_down(e) {
-        // When a finger touches while pencil is active, prepare for right button
-        if (pencil_pointer_id !== null) {
-            pencil_touch_pointer_id = e.pointerId;
-        }
-        pencil_mouse_button = 3; // switch to right button when touch is used together with pencil
-    }
-
-    function emulate_mouse_pencil_touch_up(e) {
-        // Check if this touch was coordinated with pencil for right-button click
-        if (e.pointerId === pencil_touch_pointer_id && pencil_pointer_id !== null) {
-            // Right button click
-            pencil_touch_pointer_id = null;
-        }
-        pencil_mouse_button = 1; // switch to left button when touch is used together with pencil
-    }
-
     // Register pencil event listeners if pointer events are supported
     if (window.PointerEvent) {
         document.addEventListener('pointerdown', function(e) {
             if (e.pointerType === 'pen') {
                 emulate_mouse_pencil_down(e);
-            } else if (e.pointerType === 'touch' && pencil_pointer_id !== null) {
-                emulate_mouse_pencil_touch_down(e);
+            } else if (e.pointerType === 'touch') {
+                pencil_mouse_button = 3; // switch to right button when touch is used together with pencil
             }
         }, false);
         
@@ -2651,8 +2634,8 @@ function InitWrappers() {
         document.addEventListener('pointerup', function(e) {
             if (e.pointerType === 'pen') {
                 emulate_mouse_pencil_up(e);
-            } else if (e.pointerType === 'touch' && e.pointerId === pencil_touch_pointer_id) {
-                emulate_mouse_pencil_touch_up(e);
+            } else if (e.pointerType === 'touch') {
+                pencil_mouse_button = 1; // switch back to left button when touch is used together with pencil
             }
         }, false);
     }
