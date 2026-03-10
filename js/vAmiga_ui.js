@@ -2547,12 +2547,13 @@ function InitWrappers() {
     let pencil_port = 1;
     let pencil_left_button_pressed = false;
     let pencil_mouse_button=1; // left button by default, can be switched to right button when touch is used together with pencil
+    let pencil_moved=false;
     function emulate_mouse_pencil_down(e) {
         pencil_last_x = e.clientX;
         pencil_last_y = e.clientY;
         pencil_start_x = e.clientX;
         pencil_start_y = e.clientY;
-        
+        pencil_moved=false;    
         pencil_mouse_button = e.clientY >= window.innerHeight/2 ? 1 /* left button */ : 3 /* right button */;
 
 
@@ -2563,7 +2564,7 @@ function InitWrappers() {
             // Long press detected: activate left mouse button hold
             Module._wasm_mouse_button(pencil_port, pencil_mouse_button, 1/* down */);
             pencil_left_button_pressed = true;
-        }, 1000);
+        }, 800);
     }
 
     function emulate_mouse_pencil_move(e) {
@@ -2587,6 +2588,7 @@ function InitWrappers() {
                 clearTimeout(pencil_long_press_timeout);
                 pencil_long_press_timeout = null;
             }
+            pencil_moved=true;
         }
         
         pencil_last_x = e.clientX;
@@ -2607,7 +2609,8 @@ function InitWrappers() {
             Module._wasm_mouse_button(pencil_port, pencil_mouse_button, 0/* up */);
             pencil_left_button_pressed = false;
         }
-        else {
+        else if(!pencil_moved)
+        {
             console.log("single click="+pencil_mouse_button);
 
             // Short tap: send single click
@@ -2628,9 +2631,9 @@ function InitWrappers() {
         }, false);
         
         document.addEventListener('pointermove', function(e) {
-//            if (e.pointerType === 'pen') {
-                emulate_mouse_pencil_move(e);
-//            }
+            if (e.pointerType === 'pen' && e.buttons === 0) 
+                return; //pencil is hovering
+            emulate_mouse_pencil_move(e);
         }, false);
         
         document.addEventListener('pointerup', function(e) {
