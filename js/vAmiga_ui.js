@@ -2544,7 +2544,7 @@ function InitWrappers() {
     let pencil_last_y = 0;
     let pencil_start_x = 0;
     let pencil_start_y = 0;
-    let pencil_port = 1;
+    let pencil_port = null;
     let pencil_left_button_pressed = false;
     let pencil_mouse_button=1; // left button by default, can be switched to right button when touch is used together with pencil
     let pencil_moved=false;
@@ -2564,10 +2564,14 @@ function InitWrappers() {
             // Long press detected: activate left mouse button hold
             Module._wasm_mouse_button(pencil_port, pencil_mouse_button, 1/* down */);
             pencil_left_button_pressed = true;
-        }, 800);
+        }, 200);
     }
 
     function emulate_mouse_pencil_move(e) {
+        if (e.pointerType === "pen" && e.buttons === 0 
+            || e.pointerType==="mouse" && e.buttons === 0)
+            return; // Ignore move events when no buttons are pressed (hovering)
+
 
         // Calculate movement
         let movementX = e.clientX - pencil_last_x;
@@ -2604,15 +2608,11 @@ function InitWrappers() {
         
         if (pencil_left_button_pressed) {
             // Release long-press button
-            console.log("long click release="+pencil_mouse_button);
-
             Module._wasm_mouse_button(pencil_port, pencil_mouse_button, 0/* up */);
             pencil_left_button_pressed = false;
         }
         else if(!pencil_moved)
         {
-            console.log("single click="+pencil_mouse_button);
-
             // Short tap: send single click
             Module._wasm_mouse_button(pencil_port, pencil_mouse_button, 1/* down */);
             setTimeout(() => {
@@ -2622,27 +2622,28 @@ function InitWrappers() {
     }
 
     // Register pencil event listeners if pointer events are supported
-    if (window.PointerEvent) {
-        document.addEventListener('pointerdown', function(e) {
-            console.log("pointerdown type="+e.pointerType);
-//            if (e.pointerType === 'pen') {
-                emulate_mouse_pencil_down(e);
-//            }
-        }, false);
-        
-        document.addEventListener('pointermove', function(e) {
-            if (e.pointerType === 'pen' && e.buttons === 0) 
-                return; //pencil is hovering
-            emulate_mouse_pencil_move(e);
-        }, false);
-        
-        document.addEventListener('pointerup', function(e) {
-            console.log("pointerup type="+e.pointerType);
-
-//            if (e.pointerType === 'pen') {
-                emulate_mouse_pencil_up(e);
-//            }
-        }, false);
+    function handlePointerDown(e) {
+        if (pencil_port === null) return;
+        emulate_mouse_pencil_down(e);
+    }
+    function handlePointerMove(e) {
+        if (pencil_port === null) return;
+        emulate_mouse_pencil_move(e);
+    }
+    function handlePointerUp(e) {
+        if (pencil_port === null) return;
+        emulate_mouse_pencil_up(e);
+    }
+    function updatePencilListeners() {
+        if (pencil_port !== null) {
+            document.addEventListener('pointerdown', handlePointerDown, false);
+            document.addEventListener('pointermove', handlePointerMove, false);
+            document.addEventListener('pointerup', handlePointerUp, false);
+        } else {
+            document.removeEventListener('pointerdown', handlePointerDown, false);
+            document.removeEventListener('pointermove', handlePointerMove, false);
+            document.removeEventListener('pointerup', handlePointerUp, false);
+        }
     }
 
     //--
@@ -2748,7 +2749,12 @@ function InitWrappers() {
     installKeyboard(keyboard_layout); 
     reset_keyboard();
     add_click("button_keyboard",function(){
-        $('#virtual_keyboard').collapse('toggle');
+        if ($('#virtual_keyboard').hasClass('show') || $('#hide_keyboard_container').is(':visible')) {
+            $('#virtual_keyboard').collapse('hide');
+            $('#hide_keyboard_container').css({display: 'none'});
+        } else {
+            $('#virtual_keyboard').collapse('show');
+        }
         setTimeout( scaleVMCanvas, 500);
         setTimeout( hide_all_tooltips, 1000);
     });
@@ -4380,10 +4386,12 @@ $('.layer').change( function(event) {
         if(port1 == 'pencil')
         {
             pencil_port = 1;
+            updatePencilListeners();
         }
         else if(port2 != 'pencil')
         {
             pencil_port = null;
+            updatePencilListeners();
         }
         this.blur();
     }
@@ -4436,10 +4444,12 @@ $('.layer').change( function(event) {
         if(port2 == 'pencil')
         {
             pencil_port = 2;
+            updatePencilListeners();
         }
         else if(port1 != 'pencil')
         {
             pencil_port = null;
+            updatePencilListeners();
         }
         this.blur();
     }
