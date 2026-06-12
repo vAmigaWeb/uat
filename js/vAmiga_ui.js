@@ -3468,7 +3468,6 @@ requestWakeLock = async () => {
 }
 
 set_wake_lock = (use_wake_lock)=>{
-    let is_supported=false;
     if (! ('wakeLock' in navigator)) {
         wake_lock_switch.prop('disabled', true);
         $("#wake_lock_status").text("(wake lock is not supported on this browser, your system will decide when it turns your device off)");
@@ -3480,12 +3479,13 @@ set_wake_lock = (use_wake_lock)=>{
         return;
     
     //release older wakelock 
-    if(wakeLock && wakeLock.released)
+    if(wakeLock && !wakeLock.released)
     {
         let current_wakelock=wakeLock;
-        wakeLock = null;
         current_wakelock.release();
     }
+    wakeLock = null;
+
     if(use_wake_lock)
     {
         requestWakeLock();
@@ -3536,7 +3536,15 @@ add_click("btn_activity_monitor", ()=>{
 
 //------
 
-add_click("button_settings", function() {
+add_click("button_settings", async function() {
+    try
+    {
+        if(navigator.storage && navigator.storage.persist && !await navigator.storage.persisted())
+           alert(await navigator.storage.persist() ? "storage will not be cleared except by explicit user action" : "storage may be cleared by the UA under storage pressure");
+    } catch(e){
+        console.error(e);
+    }
+
     $('#modal_settings').modal('show');
 });
 
@@ -3795,7 +3803,45 @@ $('.layer').change( function(event) {
                 $("#drop_zone").html(`file slot`);
             });
         }
+
+        show_browser_storage_info();
+        
     });
+
+    show_browser_storage_info = async function() {
+        async function isStoragePersisted() {
+            return await navigator.storage && navigator.storage.persisted &&
+            navigator.storage.persisted();
+        }
+
+        let quota_display = "";
+        if (navigator.storage && navigator.storage.estimate) {
+            const estimation = await navigator.storage.estimate();
+            quota_display = `
+            total storage: ${Math.round(estimation.quota/1024/1024)}MB 
+            <br>
+            used storage: ${Math.round(estimation.usage/1024/1024)}MB
+            <br>
+            free storage: ${Math.round((estimation.quota - estimation.usage)/1024/1024)}MB            
+            ` ;
+        }
+
+  
+
+        $("#storage_info").html(
+            `
+            storage persistence is ${await isStoragePersisted() ? "enabled" : "not enabled"}. 
+            
+            <br>
+            <span>If not enabled, your data may be cleared by the browser when it needs to free up space.</span>
+            <br>
+            
+            ${quota_display}
+            `
+        );
+
+    }
+
 
     add_click('button_take_snapshot', function() 
     {       
