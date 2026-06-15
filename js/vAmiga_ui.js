@@ -3830,10 +3830,10 @@ $('.layer').change( function(event) {
             `
             ${quota_display}
 
-            <div style="margin-left: 13px;margin-top:4px">Persistent storage 
+            <div style="margin-left: 13px;margin-top:4px">persistent storage 
             ${await isStoragePersisted() ? 
-                "enabled. Data won't be cleared automatically." : 
-                "disabled. Data may be cleared automatically if storage is low."
+                "enabled. data won't be cleared automatically." : 
+                "disabled. data may be cleared automatically if storage is low."
             }
             </div>     
             `
