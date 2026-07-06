@@ -526,6 +526,14 @@ function message_handler_queue_worker(msg, data, data2)
         document.body.setAttribute('warpstate', is_warping);
         window.parent.postMessage({ msg: 'render_run_state', value: is_running(), is_warping:  is_warping },"*");
     }
+    else if(msg == "MSG_RSH_UPDATE" || msg == "MSG_RSH_SWITCH")
+    {
+        if(typeof update_retro_shell === 'function') update_retro_shell();
+    }
+    else if(msg == "MSG_RSH_CLOSE")
+    {
+        $('#modal_retro_shell').modal('hide');
+    }
     else if(msg == "MSG_VIDEO_FORMAT")
     {
         $('#ntsc_pixel_ratio_switch').prop('checked', data==1);  
@@ -1854,7 +1862,7 @@ function emit_joystick_cmd(command)
 
 }
 
-const PORT_ACCESSOR = {
+var PORT_ACCESSOR = {
     MANUAL: 'MANUAL',
     BOT: 'BOT'
 }
@@ -2044,6 +2052,10 @@ function InitWrappers() {
     wasm_save_workspace = Module.cwrap('wasm_save_workspace', 'string', ['string']);
     wasm_load_workspace = Module.cwrap('wasm_load_workspace', 'undefined', ['string']);
     wasm_retro_shell = Module.cwrap('wasm_retro_shell', 'undefined', ['string']);
+    wasm_retro_shell_get_text = Module.cwrap('wasm_retro_shell_get_text', 'string');
+    wasm_retro_shell_get_cursor = Module.cwrap('wasm_retro_shell_get_cursor', 'number');
+    wasm_retro_shell_press_key = Module.cwrap('wasm_retro_shell_press_key', 'undefined', ['number']);
+    wasm_retro_shell_press_special = Module.cwrap('wasm_retro_shell_press_special', 'undefined', ['number','number']);
 
     const volumeSlider = document.getElementById('volume-slider');
     set_volume = (new_volume)=>{
@@ -3538,6 +3550,65 @@ add_click("btn_activity_monitor", ()=>{
 
 add_click("button_settings", function() {
     $('#modal_settings').modal('show');
+});
+
+//------ RetroShell console (modeled after vAmigaNet)
+
+const RSKEY = {UP:0,DOWN:1,LEFT:2,RIGHT:3,PAGE_UP:4,PAGE_DOWN:5,DEL:6,CUT:7,BACKSPACE:8,HOME:9,END:10,TAB:11,RETURN:12,CR:13};
+
+update_retro_shell = function()
+{
+    let ta = document.getElementById('retro_shell_textarea');
+    if(ta == null || typeof wasm_retro_shell_get_text === 'undefined')
+        return;
+    let rel = wasm_retro_shell_get_cursor();
+    ta.value = wasm_retro_shell_get_text();
+    let pos = ta.value.length + rel;
+    if(pos < 0) pos = 0;
+    ta.focus();
+    ta.setSelectionRange(pos > 0 ? pos - 1 : 0, pos);
+    ta.scrollTop = ta.scrollHeight;
+}
+
+function retro_shell_keydown(e)
+{
+    e.preventDefault();
+    if(e.ctrlKey)
+    {
+        if(e.key == 'k') wasm_retro_shell_press_special(RSKEY.CUT, 0);
+        else if(e.key == 'a') wasm_retro_shell_press_special(RSKEY.HOME, 0);
+        else if(e.key == 'e') wasm_retro_shell_press_special(RSKEY.END, 0);
+        update_retro_shell();
+        return;
+    }
+    switch(e.key)
+    {
+        case 'ArrowUp':    wasm_retro_shell_press_special(RSKEY.UP, 0); break;
+        case 'ArrowDown':  wasm_retro_shell_press_special(RSKEY.DOWN, 0); break;
+        case 'ArrowLeft':  wasm_retro_shell_press_special(RSKEY.LEFT, 0); break;
+        case 'ArrowRight': wasm_retro_shell_press_special(RSKEY.RIGHT, 0); break;
+        case 'Home':       wasm_retro_shell_press_special(RSKEY.HOME, 0); break;
+        case 'End':        wasm_retro_shell_press_special(RSKEY.END, 0); break;
+        case 'PageUp':     wasm_retro_shell_press_special(RSKEY.PAGE_UP, 0); break;
+        case 'PageDown':   wasm_retro_shell_press_special(RSKEY.PAGE_DOWN, 0); break;
+        case 'Backspace':  wasm_retro_shell_press_special(RSKEY.BACKSPACE, 0); break;
+        case 'Delete':     wasm_retro_shell_press_special(RSKEY.DEL, 0); break;
+        case 'Enter':      wasm_retro_shell_press_special(RSKEY.RETURN, e.shiftKey ? 1 : 0); break;
+        case 'Tab':        wasm_retro_shell_press_special(RSKEY.TAB, 0); break;
+        default:
+            if(e.key.length == 1) wasm_retro_shell_press_key(e.key.charCodeAt(0));
+    }
+    update_retro_shell();
+}
+
+add_click("button_retro_shell", function() {
+    $('#modal_retro_shell').modal('show');
+});
+
+$('#modal_retro_shell').on('shown.bs.modal', function() {
+    let ta = document.getElementById('retro_shell_textarea');
+    if(ta != null) ta.onkeydown = retro_shell_keydown;
+    update_retro_shell();
 });
 
 //------
@@ -5141,6 +5212,7 @@ press_key('1');
 release_key('1');
 release_key('ControlLeft');`;
                         set_script_language('javascript');
+                        reconfig_editor('javascript');
                     }
                     else
                     {
@@ -5396,7 +5468,7 @@ release_key('ControlLeft');`;
                         ...CM6.defaultKeymap,
                         ...CM6.historyKeymap,
                         ...CM6.completionKeymap,
-                        { key: "Tab", run: CM6.indentWithTab },
+                        CM6.indentWithTab,
                         { key: "Ctrl-Space", run: CM6.startCompletion }
                     ]),
                     CM6.history(),
@@ -5423,13 +5495,6 @@ release_key('ControlLeft');`;
                             const view = update.view;
                             setTimeout(() => CM6.startCompletion(view), 10);
                         }
-                    }),
-                    CM6.EditorView.domEventHandlers({
-                        keydown(event) {
-                            if (event.key === "Escape") {
-                                event.stopPropagation();
-                            }
-                        }
                     })
                 ]
             });
@@ -5443,6 +5508,16 @@ release_key('ControlLeft');`;
                 parent: editorWrapper
             });
             textarea.style.display = 'none';
+
+            // Keep focus/cursor in the editor when Escape is pressed.
+            // Bubble-phase listener on editor.dom: CM6 handles Escape first (e.g. closes
+            // the autocomplete popup), then we stop the event before it reaches the
+            // Bootstrap modal, whose keydown handler would otherwise steal focus.
+            editor.dom.addEventListener('keydown', (event) => {
+                if (event.key === "Escape") {
+                    event.stopPropagation();
+                }
+            });
 
             // Compatibility shims to keep existing CM5-style API calls working
             editor.save = () => { textarea.value = editor.state.doc.toString(); };
@@ -5479,26 +5554,10 @@ release_key('ControlLeft');`;
 
 
 
-        $('#modal_custom_key').on('shown.bs.modal', async function () 
+        //CM6 (jshint + codemirror6 bundle) is loaded statically in shell.html header
+        $('#modal_custom_key').on('shown.bs.modal', function () 
         {
-            if(typeof cm6_loaded != 'undefined')
-            {
-                turn_on_full_editor();
-            }
-            else
-            {   
-                $("#button_script_add, #button_script_language").each(function(){
-                    $(this).prop('disabled', true).
-                    removeClass( "btn-primary" ).
-                    addClass("btn-secondary");
-                });
-
-                //lazy load CM6 editor now (CM6 injects its own CSS automatically)
-                await load_script("js/cm6/jshint.js");
-                await load_script("js/cm6/codemirror6.bundle.js");
-                cm6_loaded = true;
-                turn_on_full_editor();
-            }
+            turn_on_full_editor();
         });
 
 
