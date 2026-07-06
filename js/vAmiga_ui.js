@@ -3552,9 +3552,11 @@ add_click("button_settings", function() {
     $('#modal_settings').modal('show');
 });
 
-//------ RetroShell console (modeled after vAmigaNet)
+//------ RetroShell console (modeled after vAmigaNet, touch-enabled)
 
 const RSKEY = {UP:0,DOWN:1,LEFT:2,RIGHT:3,PAGE_UP:4,PAGE_DOWN:5,DEL:6,CUT:7,BACKSPACE:8,HOME:9,END:10,TAB:11,RETURN:12,CR:13};
+const RSH_SENTINEL = ' ';
+let retro_shell_bound = false;
 
 update_retro_shell = function()
 {
@@ -3565,19 +3567,56 @@ update_retro_shell = function()
     ta.value = wasm_retro_shell_get_text();
     let pos = ta.value.length + rel;
     if(pos < 0) pos = 0;
-    ta.focus();
     ta.setSelectionRange(pos > 0 ? pos - 1 : 0, pos);
     ta.scrollTop = ta.scrollHeight;
 }
 
-function retro_shell_keydown(e)
+function retro_shell_focus_input()
+{
+    let cap = document.getElementById('retro_shell_capture');
+    if(cap == null) return;
+    cap.value = RSH_SENTINEL;
+    cap.focus();
+    try { cap.setSelectionRange(RSH_SENTINEL.length, RSH_SENTINEL.length); } catch(e){}
+}
+
+function retro_shell_beforeinput(e)
 {
     e.preventDefault();
+    switch(e.inputType)
+    {
+        case 'insertText':
+        case 'insertFromPaste':
+            if(e.data) for(const ch of e.data) wasm_retro_shell_press_key(ch.charCodeAt(0));
+            break;
+        case 'insertLineBreak':
+        case 'insertParagraph':
+            wasm_retro_shell_press_special(RSKEY.RETURN, 0);
+            break;
+        case 'deleteContentBackward':
+        case 'deleteWordBackward':
+        case 'deleteSoftLineBackward':
+            wasm_retro_shell_press_special(RSKEY.BACKSPACE, 0);
+            break;
+        case 'deleteContentForward':
+            wasm_retro_shell_press_special(RSKEY.DEL, 0);
+            break;
+    }
+    update_retro_shell();
+}
+
+function retro_shell_keydown(e)
+{
+    // characters, Enter and Backspace are handled via the beforeinput event
+    // so that soft keyboards on iOS/Android work; here we only handle keys
+    // that do not emit input events.
     if(e.ctrlKey)
     {
         if(e.key == 'k') wasm_retro_shell_press_special(RSKEY.CUT, 0);
         else if(e.key == 'a') wasm_retro_shell_press_special(RSKEY.HOME, 0);
         else if(e.key == 'e') wasm_retro_shell_press_special(RSKEY.END, 0);
+        else return;
+        e.preventDefault();
         update_retro_shell();
         return;
     }
@@ -3591,14 +3630,61 @@ function retro_shell_keydown(e)
         case 'End':        wasm_retro_shell_press_special(RSKEY.END, 0); break;
         case 'PageUp':     wasm_retro_shell_press_special(RSKEY.PAGE_UP, 0); break;
         case 'PageDown':   wasm_retro_shell_press_special(RSKEY.PAGE_DOWN, 0); break;
-        case 'Backspace':  wasm_retro_shell_press_special(RSKEY.BACKSPACE, 0); break;
         case 'Delete':     wasm_retro_shell_press_special(RSKEY.DEL, 0); break;
-        case 'Enter':      wasm_retro_shell_press_special(RSKEY.RETURN, e.shiftKey ? 1 : 0); break;
         case 'Tab':        wasm_retro_shell_press_special(RSKEY.TAB, 0); break;
-        default:
-            if(e.key.length == 1) wasm_retro_shell_press_key(e.key.charCodeAt(0));
+        // physical keyboards report these reliably; preventDefault below stops
+        // the follow-up beforeinput event, so there is no double input. Soft
+        // keyboards report key === 'Unidentified' here and fall through to the
+        // beforeinput handler instead.
+        case 'Enter':      wasm_retro_shell_press_special(RSKEY.RETURN, e.shiftKey ? 1 : 0); break;
+        case 'Backspace':  wasm_retro_shell_press_special(RSKEY.BACKSPACE, 0); break;
+        default: return; // let beforeinput handle typed characters
+    }
+    e.preventDefault();
+    update_retro_shell();
+}
+
+function retro_shell_button_action(a)
+{
+    switch(a)
+    {
+        case 'kbd':       retro_shell_focus_input(); return;
+        case 'up':        wasm_retro_shell_press_special(RSKEY.UP, 0); break;
+        case 'down':      wasm_retro_shell_press_special(RSKEY.DOWN, 0); break;
+        case 'left':      wasm_retro_shell_press_special(RSKEY.LEFT, 0); break;
+        case 'right':     wasm_retro_shell_press_special(RSKEY.RIGHT, 0); break;
+        case 'home':      wasm_retro_shell_press_special(RSKEY.HOME, 0); break;
+        case 'end':       wasm_retro_shell_press_special(RSKEY.END, 0); break;
+        case 'tab':       wasm_retro_shell_press_special(RSKEY.TAB, 0); break;
+        case 'backspace': wasm_retro_shell_press_special(RSKEY.BACKSPACE, 0); break;
+        case 'return':    wasm_retro_shell_press_special(RSKEY.RETURN, 0); break;
     }
     update_retro_shell();
+    retro_shell_focus_input();
+}
+
+function retro_shell_bind()
+{
+    if(retro_shell_bound) return;
+    let cap = document.getElementById('retro_shell_capture');
+    let disp = document.getElementById('retro_shell_textarea');
+    if(cap == null || disp == null) return;
+    cap.addEventListener('beforeinput', retro_shell_beforeinput);
+    cap.addEventListener('keydown', retro_shell_keydown);
+    // restore the sentinel char so backspace keeps firing on empty input
+    cap.addEventListener('input', function() {
+        if(cap.value !== RSH_SENTINEL) {
+            cap.value = RSH_SENTINEL;
+            try { cap.setSelectionRange(RSH_SENTINEL.length, RSH_SENTINEL.length); } catch(e){}
+        }
+    });
+    // tapping the output summons the soft keyboard by focusing the capture field
+    disp.addEventListener('click', retro_shell_focus_input);
+    document.querySelectorAll('#retro_shell_buttons [data-rsh]').forEach(function(btn) {
+        btn.addEventListener('mousedown', function(e) { e.preventDefault(); }); // keep focus
+        btn.addEventListener('click', function() { retro_shell_button_action(btn.getAttribute('data-rsh')); });
+    });
+    retro_shell_bound = true;
 }
 
 add_click("button_retro_shell", function() {
@@ -3606,8 +3692,8 @@ add_click("button_retro_shell", function() {
 });
 
 $('#modal_retro_shell').on('shown.bs.modal', function() {
-    let ta = document.getElementById('retro_shell_textarea');
-    if(ta != null) ta.onkeydown = retro_shell_keydown;
+    retro_shell_bind();
+    retro_shell_focus_input();
     update_retro_shell();
 });
 
