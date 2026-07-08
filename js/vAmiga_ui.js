@@ -3714,6 +3714,12 @@ function retro_shell_button_action(a)
         case 'end':       wasm_retro_shell_press_special(RSKEY.END, 0); break;
         case 'tab':       wasm_retro_shell_press_special(RSKEY.TAB, 0); break;
         case 'backspace': wasm_retro_shell_press_special(RSKEY.BACKSPACE, 0); break;
+        case 'clear':
+            // discard the current input line, then run the 'clear' command
+            wasm_retro_shell_press_special(RSKEY.CR, 0);
+            for(const ch of 'clear') wasm_retro_shell_press_key(ch.charCodeAt(0));
+            wasm_retro_shell_press_special(RSKEY.RETURN, 0);
+            break;
         case 'return':    wasm_retro_shell_press_special(RSKEY.RETURN, 0); break;
     }
     update_retro_shell();
@@ -4481,12 +4487,12 @@ $('.layer').change( function(event) {
 
                 let upgrade_info = `    
                 currently active version (old):<br>
-                <div style="display:flex">
-                <span class="ml-2 px-1 py-1 outlined">core <i>${wasm_get_core_version()}</i></span> <span class="ml-2 px-1 py-1 outlined">ui <i>${current_ui}</i></span>
+                <div class="setting_text" style="display:flex">
+                <span class="ml-2 px-1 py-1">core <i>${wasm_get_core_version()}</i></span> <span class="ml-2 px-1 py-1">ui <i>${current_ui}</i></span>
                 </div><br>
                 <span id="new_version_installed_or_not">${new_version_installed_or_not}</span>:<br> 
-                <div style="display:flex">
-                <span class="ml-2 px-1 py-1 outlined">core <i>${sw_version.core}</i></span> <span class="ml-2 px-1 py-1 outlined">ui <i>${sw_version.ui}</i></span> ${activate_or_install}
+                <div class="setting_text" style="display:flex">
+                <span class="ml-2 px-1 py-1">core <i>${sw_version.core}</i></span> <span class="ml-2 px-1 py-1">ui <i>${sw_version.ui}</i></span> ${activate_or_install}
                 </div>
                 <div id="install_warning" class="my-1">Did you know that upgrading the core may break your saved snapshots?<br/>
                 In that case you can still select and activate an older compatible installation to run it ...
@@ -4507,8 +4513,8 @@ $('.layer').change( function(event) {
             {
                 $("#version_display").html(`
                 currently active version (newest):<br>
-                <div style="display:flex">
-                <span class="ml-2 px-1 py-1 outlined">core <i>${wasm_get_core_version()}</i></span> <span class="ml-2 px-1 py-1 outlined">ui <i>${current_ui}</i></span>
+                <div class="setting_text" style="display:flex">
+                <span class="ml-2 px-1 py-1">core <i>${wasm_get_core_version()}</i></span> <span class="ml-2 px-1 py-1">ui <i>${current_ui}</i></span>
                 <button type="button" id="activate_or_install" class="btn btn-success btn-sm px-1 py-1">
                 install</button>
                 </div>
@@ -4596,7 +4602,7 @@ $('.layer').change( function(event) {
             await get_current_ui_version();
             $("#version_display").html(`
             currently active version:<br>
-            <span class="ml-2 px-1 outlined">core <i>${wasm_get_core_version()}</i></span> <span class="ml-2 px-1 outlined">ui <i>${current_ui}</i></span>
+            <div class="setting_text"><span class="ml-2 px-1">core <i>${wasm_get_core_version()}</i></span> <span class="ml-2 px-1">ui <i>${current_ui}</i></span></div>
             <br><br>
             waiting for service worker...`
             );
