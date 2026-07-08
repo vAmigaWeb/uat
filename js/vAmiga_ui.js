@@ -2054,6 +2054,7 @@ function InitWrappers() {
     wasm_retro_shell = Module.cwrap('wasm_retro_shell', 'undefined', ['string']);
     wasm_retro_shell_get_text = Module.cwrap('wasm_retro_shell_get_text', 'string');
     wasm_retro_shell_get_cursor = Module.cwrap('wasm_retro_shell_get_cursor', 'number');
+    wasm_retro_shell_get_console = Module.cwrap('wasm_retro_shell_get_console', 'number');
     wasm_retro_shell_press_key = Module.cwrap('wasm_retro_shell_press_key', 'undefined', ['number']);
     wasm_retro_shell_press_special = Module.cwrap('wasm_retro_shell_press_special', 'undefined', ['number','number']);
 
@@ -3192,6 +3193,27 @@ activity_monitor_switch.change( function() {
         set_pixel_art(this.checked);
     });
 
+//------ RetroShell enabled (shows/hides the top-bar icon)
+    retro_shell_enabled_switch = $('#retro_shell_enabled_switch');
+    set_retro_shell_enabled = function(value){
+        if(value)
+        {
+            $('#button_retro_shell').show();
+            $('#retro_shell_enabled_help').text('RetroShell icon is now visible in the menu bar');
+        }
+        else
+        {
+            $('#button_retro_shell').hide();
+            $('#retro_shell_enabled_help').text('no RetroShell icon in the menu bar');
+        }
+        retro_shell_enabled_switch.prop('checked', value);
+    }
+    set_retro_shell_enabled(load_setting('retro_shell_enabled', false));
+    retro_shell_enabled_switch.change( function() {
+        save_setting('retro_shell_enabled', this.checked);
+        set_retro_shell_enabled(this.checked);
+    });
+
 //------
 function bind_config(key, default_value){
     let config_switch = $('#'+key);
@@ -3597,6 +3619,13 @@ update_retro_shell = function()
     let pos = retro_shell_base_text.length + rel - 1;
     if(pos < 0) pos = 0;
     retro_shell_cursor_pos = pos;
+    // colorize by active console: 0 = commander, 1 = debugger, 2 = navigator
+    let pre = document.getElementById('retro_shell_textarea');
+    if(pre != null && typeof wasm_retro_shell_get_console === 'function')
+    {
+        let mode = ['commander','debugger','navigator'][wasm_retro_shell_get_console()] || 'commander';
+        pre.setAttribute('data-rsh-mode', mode);
+    }
     retro_shell_render();
 }
 
@@ -3677,7 +3706,6 @@ function retro_shell_button_action(a)
 {
     switch(a)
     {
-        case 'kbd':       retro_shell_focus_input(); return;
         case 'up':        wasm_retro_shell_press_special(RSKEY.UP, 0); break;
         case 'down':      wasm_retro_shell_press_special(RSKEY.DOWN, 0); break;
         case 'left':      wasm_retro_shell_press_special(RSKEY.LEFT, 0); break;
@@ -3710,7 +3738,15 @@ function retro_shell_bind()
     // tapping the output summons the soft keyboard by focusing the capture field
     disp.addEventListener('click', retro_shell_focus_input);
     document.querySelectorAll('#retro_shell_buttons [data-rsh]').forEach(function(btn) {
-        btn.addEventListener('mousedown', function(e) { e.preventDefault(); }); // keep focus
+        // press/release animation (same as the on-screen action buttons)
+        btn.addEventListener('pointerdown', function(e) {
+            e.preventDefault(); // keep focus on the capture field
+            btn.setAttribute('key-state', 'pressed');
+        });
+        let release = function() { btn.setAttribute('key-state', ''); };
+        btn.addEventListener('pointerup', release);
+        btn.addEventListener('pointerleave', release);
+        btn.addEventListener('pointercancel', release);
         btn.addEventListener('click', function() { retro_shell_button_action(btn.getAttribute('data-rsh')); });
     });
     retro_shell_bound = true;
