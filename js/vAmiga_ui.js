@@ -526,7 +526,7 @@ function message_handler_queue_worker(msg, data, data2)
         document.body.setAttribute('warpstate', is_warping);
         window.parent.postMessage({ msg: 'render_run_state', value: is_running(), is_warping:  is_warping },"*");
     }
-    else if(msg == "MSG_RSH_UPDATE" || msg == "MSG_RSH_SWITCH")
+     else if(msg == "MSG_RSH_UPDATE" || msg == "MSG_RSH_SWITCH")
     {
         if(typeof update_retro_shell === 'function') update_retro_shell();
     }
@@ -3558,17 +3558,46 @@ const RSKEY = {UP:0,DOWN:1,LEFT:2,RIGHT:3,PAGE_UP:4,PAGE_DOWN:5,DEL:6,CUT:7,BACK
 const RSH_SENTINEL = ' ';
 let retro_shell_bound = false;
 
+let retro_shell_base_text = '';
+let retro_shell_cursor_pos = 0;
+
+function retro_shell_render()
+{
+    let pre = document.getElementById('retro_shell_textarea');
+    if(pre == null) return;
+    let text = retro_shell_base_text;
+    let i = retro_shell_cursor_pos;
+    // rebuild via DOM so text is safely escaped and the cursor is its own span
+    // (a real underscore cursor that blinks via CSS without hiding the glyph)
+    pre.textContent = '';
+    if(i >= 0 && i < text.length && text[i] !== '\n')
+    {
+        pre.appendChild(document.createTextNode(text.slice(0, i)));
+        let cur = document.createElement('span');
+        cur.className = 'rsh-cursor';
+        cur.textContent = text[i];
+        pre.appendChild(cur);
+        pre.appendChild(document.createTextNode(text.slice(i + 1)));
+    }
+    else
+    {
+        pre.textContent = text;
+    }
+    pre.scrollTop = pre.scrollHeight;
+}
+
 update_retro_shell = function()
 {
-    let ta = document.getElementById('retro_shell_textarea');
-    if(ta == null || typeof wasm_retro_shell_get_text === 'undefined')
+    if(typeof wasm_retro_shell_get_text === 'undefined')
         return;
     let rel = wasm_retro_shell_get_cursor();
-    ta.value = wasm_retro_shell_get_text();
-    let pos = ta.value.length + rel;
+    retro_shell_base_text = wasm_retro_shell_get_text();
+    // text() appends a trailing space after the input line, so the cursor cell
+    // is at length + rel - 1 (matches the core's cursor, not one cell further)
+    let pos = retro_shell_base_text.length + rel - 1;
     if(pos < 0) pos = 0;
-    ta.setSelectionRange(pos > 0 ? pos - 1 : 0, pos);
-    ta.scrollTop = ta.scrollHeight;
+    retro_shell_cursor_pos = pos;
+    retro_shell_render();
 }
 
 function retro_shell_focus_input()
@@ -3688,13 +3717,18 @@ function retro_shell_bind()
 }
 
 add_click("button_retro_shell", function() {
-    $('#modal_retro_shell').modal('show');
+    $('#modal_retro_shell').modal('toggle');
 });
 
 $('#modal_retro_shell').on('shown.bs.modal', function() {
+    document.body.classList.add('retro-shell-open');
     retro_shell_bind();
     retro_shell_focus_input();
     update_retro_shell();
+});
+
+$('#modal_retro_shell').on('hidden.bs.modal', function() {
+    document.body.classList.remove('retro-shell-open');
 });
 
 //------
