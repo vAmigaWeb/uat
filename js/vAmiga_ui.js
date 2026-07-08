@@ -3689,7 +3689,7 @@ function retro_shell_keydown(e)
         case 'PageUp':     wasm_retro_shell_press_special(RSKEY.PAGE_UP, 0); break;
         case 'PageDown':   wasm_retro_shell_press_special(RSKEY.PAGE_DOWN, 0); break;
         case 'Delete':     wasm_retro_shell_press_special(RSKEY.DEL, 0); break;
-        case 'Tab':        wasm_retro_shell_press_special(RSKEY.TAB, 0); break;
+        case 'Tab':        wasm_retro_shell_press_special(RSKEY.TAB, e.shiftKey ? 1 : 0); break;
         // physical keyboards report these reliably; preventDefault below stops
         // the follow-up beforeinput event, so there is no double input. Soft
         // keyboards report key === 'Unidentified' here and fall through to the
