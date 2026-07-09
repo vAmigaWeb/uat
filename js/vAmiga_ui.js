@@ -3199,12 +3199,12 @@ activity_monitor_switch.change( function() {
         if(value)
         {
             $('#button_retro_shell').show();
-            $('#retro_shell_enabled_help').text('RetroShell icon is now visible in the menu bar');
+            $('#retro_shell_enabled_help').text('The RetroShell icon is now shown in the menu bar. Open RetroShell to debug, browse files, tweak settings, and more.');
         }
         else
         {
             $('#button_retro_shell').hide();
-            $('#retro_shell_enabled_help').text('no RetroShell icon in the menu bar');
+            $('#retro_shell_enabled_help').text('The RetroShell icon is hidden from the menu bar.');
         }
         retro_shell_enabled_switch.prop('checked', value);
     }
