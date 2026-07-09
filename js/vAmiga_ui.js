@@ -3629,28 +3629,13 @@ update_retro_shell = function()
     retro_shell_render();
 }
 
-// place the caret at the end of a contenteditable element
-function rsh_set_caret_end(el)
-{
-    try {
-        let r = document.createRange();
-        r.selectNodeContents(el);
-        r.collapse(false);
-        let s = window.getSelection();
-        s.removeAllRanges();
-        s.addRange(r);
-    } catch(e){}
-}
-
 function retro_shell_focus_input()
 {
     let cap = document.getElementById('retro_shell_capture');
     if(cap == null) return;
-    // contenteditable (instead of <textarea>) so iOS does not show the input
-    // accessory / form navigation bar above the software keyboard
-    cap.textContent = RSH_SENTINEL;
+    cap.value = RSH_SENTINEL;
     cap.focus();
-    rsh_set_caret_end(cap);
+    try { cap.setSelectionRange(RSH_SENTINEL.length, RSH_SENTINEL.length); } catch(e){}
 }
 
 function retro_shell_beforeinput(e)
@@ -3761,9 +3746,9 @@ function retro_shell_bind()
     cap.addEventListener('keydown', retro_shell_keydown);
     // restore the sentinel char so backspace keeps firing on empty input
     cap.addEventListener('input', function() {
-        if(cap.textContent !== RSH_SENTINEL) {
-            cap.textContent = RSH_SENTINEL;
-            rsh_set_caret_end(cap);
+        if(cap.value !== RSH_SENTINEL) {
+            cap.value = RSH_SENTINEL;
+            try { cap.setSelectionRange(RSH_SENTINEL.length, RSH_SENTINEL.length); } catch(e){}
         }
     });
     // tapping the output summons the soft keyboard by focusing the capture field
