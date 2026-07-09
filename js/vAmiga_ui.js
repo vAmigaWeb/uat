@@ -3629,13 +3629,28 @@ update_retro_shell = function()
     retro_shell_render();
 }
 
+// place the caret at the end of a contenteditable element
+function rsh_set_caret_end(el)
+{
+    try {
+        let r = document.createRange();
+        r.selectNodeContents(el);
+        r.collapse(false);
+        let s = window.getSelection();
+        s.removeAllRanges();
+        s.addRange(r);
+    } catch(e){}
+}
+
 function retro_shell_focus_input()
 {
     let cap = document.getElementById('retro_shell_capture');
     if(cap == null) return;
-    cap.value = RSH_SENTINEL;
+    // contenteditable (instead of <textarea>) so iOS does not show the input
+    // accessory / form navigation bar above the software keyboard
+    cap.textContent = RSH_SENTINEL;
     cap.focus();
-    try { cap.setSelectionRange(RSH_SENTINEL.length, RSH_SENTINEL.length); } catch(e){}
+    rsh_set_caret_end(cap);
 }
 
 function retro_shell_beforeinput(e)
@@ -3696,7 +3711,17 @@ function retro_shell_keydown(e)
         // beforeinput handler instead.
         case 'Enter':      wasm_retro_shell_press_special(RSKEY.RETURN, e.shiftKey ? 1 : 0); break;
         case 'Backspace':  wasm_retro_shell_press_special(RSKEY.BACKSPACE, 0); break;
-        default: return; // let beforeinput handle typed characters
+        default:
+            // physical keyboards deliver printable characters reliably here as a
+            // single-character e.key; handle them directly and preventDefault
+            // below so the follow-up beforeinput does not double-insert. Soft
+            // keyboards report key === 'Unidentified' (length > 1) and fall
+            // through to the beforeinput handler instead.
+            if(e.key && e.key.length === 1 && !e.metaKey && !e.altKey) {
+                wasm_retro_shell_press_key(e.key.charCodeAt(0));
+                break;
+            }
+            return; // let beforeinput handle it (soft keyboards, IME, ...)
     }
     e.preventDefault();
     update_retro_shell();
@@ -3736,9 +3761,9 @@ function retro_shell_bind()
     cap.addEventListener('keydown', retro_shell_keydown);
     // restore the sentinel char so backspace keeps firing on empty input
     cap.addEventListener('input', function() {
-        if(cap.value !== RSH_SENTINEL) {
-            cap.value = RSH_SENTINEL;
-            try { cap.setSelectionRange(RSH_SENTINEL.length, RSH_SENTINEL.length); } catch(e){}
+        if(cap.textContent !== RSH_SENTINEL) {
+            cap.textContent = RSH_SENTINEL;
+            rsh_set_caret_end(cap);
         }
     });
     // tapping the output summons the soft keyboard by focusing the capture field
