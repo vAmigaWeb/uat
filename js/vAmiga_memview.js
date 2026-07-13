@@ -93,27 +93,36 @@ function memview_init() {
         memview_set_start(memdump_start + rows * memview_row_stride);
     }, { passive: false });
 
-    // drag to scroll
-    canvas.addEventListener("mousedown", function(e) {
+    // drag to scroll (pointer events cover mouse, touch and pen -> works on iPad)
+    canvas.addEventListener("pointerdown", function(e) {
+        e.preventDefault();
+        memview_begin_drag();
         memview_pressed = true;
         memview_drag_start_y = e.clientY;
         memview_drag_start_addr = memdump_start;
+        if (canvas.setPointerCapture) {
+            try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+        }
     });
-    window.addEventListener("mousemove", function(e) {
+    window.addEventListener("pointermove", function(e) {
         if (!memview_pressed) return;
-        // scale mouse pixels to internal rows
+        e.preventDefault();
+        // scale pointer pixels to internal rows
         let canvasRect = canvas.getBoundingClientRect();
         let rowsPerPixel = MEMVIEW_VPIXELS / canvasRect.height;
         let dyRows = Math.round((e.clientY - memview_drag_start_y) * rowsPerPixel);
         memview_set_start(memview_drag_start_addr - dyRows * memview_row_stride, true);
         if (!(live_memory_dump_enabled && is_running_safe())) memdump();
-    });
-    window.addEventListener("mouseup", function() {
+    }, { passive: false });
+    let end_detail_drag = function() {
         if (memview_pressed) {
             memview_pressed = false;
             if (!(live_memory_dump_enabled && is_running_safe())) memdump();
         }
-    });
+        memview_end_drag();
+    };
+    window.addEventListener("pointerup", end_detail_drag);
+    window.addEventListener("pointercancel", end_detail_drag);
 
     // manual start address input
     let startInput = document.getElementById("memview_start");
@@ -128,13 +137,19 @@ function memview_init() {
     }
 
     // overview drag handling (blocks are created per region in build_overview_dom)
-    window.addEventListener("mousemove", function(e) {
-        if (mempreview_pressed && memview_drag_region) memview_overview_jump(memview_drag_region, e);
-    });
-    window.addEventListener("mouseup", function() {
+    window.addEventListener("pointermove", function(e) {
+        if (mempreview_pressed && memview_drag_region) {
+            e.preventDefault();
+            memview_overview_jump(memview_drag_region, e);
+        }
+    }, { passive: false });
+    let end_overview_drag = function() {
         mempreview_pressed = false;
         memview_drag_region = null;
-    });
+        memview_end_drag();
+    };
+    window.addEventListener("pointerup", end_overview_drag);
+    window.addEventListener("pointercancel", end_overview_drag);
 
     // live update checkbox
     let liveCb = document.getElementById("memview_live");
@@ -184,6 +199,17 @@ function is_running_safe() {
     return typeof running !== "undefined" && running;
 }
 
+// suppress text/canvas selection while a drag is in progress (some browsers
+// invert the canvas colors when it becomes part of a selection)
+function memview_begin_drag() {
+    document.body.classList.add("memview-dragging");
+    let sel = window.getSelection && window.getSelection();
+    if (sel && sel.removeAllRanges) { try { sel.removeAllRanges(); } catch (e) {} }
+}
+function memview_end_drag() {
+    document.body.classList.remove("memview-dragging");
+}
+
 // positions the panel directly below the navbar while it is visible,
 // otherwise lets it use the full viewport height
 function memview_update_top() {
@@ -194,6 +220,17 @@ function memview_update_top() {
     // detect visibility via offsetHeight (0 when the collapse is hidden)
     let visible = nav && nav.offsetHeight > 0;
     panel.style.top = visible ? nav.getBoundingClientRect().bottom + "px" : "0px";
+    memview_update_bottom();
+}
+
+// when the activity monitor grid is visible, stop the panel right above it so
+// its vertical end lines up exactly with the top of the monitor grid
+function memview_update_bottom() {
+    let panel = document.getElementById("memview_panel");
+    if (!panel) return;
+    let activity = document.getElementById("activity");
+    let h = (activity && activity.offsetHeight > 0) ? activity.offsetHeight : 0;
+    panel.style.bottom = h + "px";
 }
 
 function memview_set_start(addr, keepPressed) {
@@ -369,11 +406,7 @@ function memview_refresh_bitplanes(force) {
 function memdump() {
     if (!memview_open || !memview_initialized) return;
     if (typeof wasm_peek16 !== "function") return;
-    if (memview_pressed) {
-        memdump_do(memdump_start, memdump_col1 ^ 0x00808080, memdump_col2 ^ 0x00808080);
-    } else {
-        memdump_do(memdump_start, memdump_col1, memdump_col2);
-    }
+    memdump_do(memdump_start, memdump_col1, memdump_col2);
 }
 
 function memdump_do(start0, col1, col2) {
@@ -467,7 +500,9 @@ function memview_build_overview_dom(defs) {
         memview_regions.push(r);
 
         (function(region) {
-            canvas.addEventListener("mousedown", function(e) {
+            canvas.addEventListener("pointerdown", function(e) {
+                e.preventDefault();
+                memview_begin_drag();
                 mempreview_pressed = true;
                 memview_drag_region = region;
                 memview_overview_jump(region, e);

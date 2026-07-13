@@ -3221,6 +3221,31 @@ activity_monitor_switch.change( function() {
         set_retro_shell_enabled(this.checked);
     });
 
+//------ live memory view enabled (shows/hides the top-bar icon)
+    memview_enabled_switch = $('#memview_enabled_switch');
+    set_memview_enabled = function(value){
+        if(value)
+        {
+            $('#button_memview').show();
+            $('#memview_enabled_help').text('The live memory view icon is now shown in the menu bar.');
+        }
+        else
+        {
+            $('#button_memview').hide();
+            $('#memview_enabled_help').text('The live memory view icon is hidden from the menu bar.');
+            // also close the panel if it happens to be open
+            if(typeof memview_open !== 'undefined' && memview_open &&
+               typeof memview_close_panel === 'function')
+                memview_close_panel();
+        }
+        memview_enabled_switch.prop('checked', value);
+    }
+    set_memview_enabled(load_setting('memview_enabled', false));
+    memview_enabled_switch.change( function() {
+        save_setting('memview_enabled', this.checked);
+        set_memview_enabled(this.checked);
+    });
+
 //------
 function bind_config(key, default_value){
     let config_switch = $('#'+key);
@@ -3740,7 +3765,11 @@ function retro_shell_button_action(a)
         case 'return':    wasm_retro_shell_press_special(RSKEY.RETURN, 0); break;
     }
     update_retro_shell();
-    retro_shell_focus_input();
+    // keep typing focus only if the capture field already had it. pressing an
+    // on-screen button must never summon the soft keyboard on its own (iPad).
+    let cap = document.getElementById('retro_shell_capture');
+    if(cap != null && document.activeElement === cap)
+        retro_shell_focus_input();
 }
 
 function retro_shell_bind()
@@ -6575,6 +6604,9 @@ function show_activity()
     add_monitor("fastRam", "CPU (fastRAM)", true);
     add_monitor("kickRom", "CPU (kickROM)", true);
 
+    // let the memory view panel end exactly at the top of the monitor grid
+    if(typeof memview_update_bottom === "function")
+        requestAnimationFrame(memview_update_bottom);
  }
 function hide_activity()
 {
@@ -6584,6 +6616,10 @@ function hide_activity()
     clearInterval(activity_intervall);
     activity_intervall=null;
     $("#activity_help").hide();
+
+    // monitor grid gone -> let the memory view reclaim the full height
+    if(typeof memview_update_bottom === "function")
+        memview_update_bottom();
 }
 
 function dma_debug(channel)

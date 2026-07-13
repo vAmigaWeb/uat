@@ -1176,6 +1176,11 @@ body.retro-shell-open #button_show_menu { z-index: 41; }
   image-rendering: pixelated;
   background: #000;
   display: block;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
 }
 #memview_header {
   display: flex;
@@ -1216,6 +1221,22 @@ body.retro-shell-open #button_show_menu { z-index: 41; }
   cursor: grab;
   image-rendering: pixelated;
   background: #371d20;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+#memview_canvas::selection { background: transparent; }
+/* while dragging inside the memory view, suppress any text/canvas selection
+   globally (some engines invert canvas colors when it gets selected) */
+body.memview-dragging,
+body.memview-dragging * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+body.memview-dragging {
+  -webkit-touch-callout: none !important;
 }
 /* "possible bitplane areas" section in the overview column */
 .memview_bpl_title {
