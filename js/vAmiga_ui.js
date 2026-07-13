@@ -1961,6 +1961,10 @@ function InitWrappers() {
                     render_canvas_gl(now);
                 else
                     render_canvas(now);
+                if(typeof live_memory_dump_enabled !== 'undefined' && live_memory_dump_enabled)
+                    memdump();
+                if(typeof memview_bpl_tick === 'function')
+                    memview_bpl_tick();
             }
             if(Module._wasm_is_worker_built()){
                 rendered_frame_id=0;
@@ -2027,6 +2031,9 @@ function InitWrappers() {
     wasm_schedule_key = Module.cwrap('wasm_schedule_key', 'undefined', ['number', 'number', 'number', 'number']);
 
     wasm_peek = Module.cwrap('wasm_peek', 'number', ['number']);
+    wasm_peek16 = Module.cwrap('wasm_peek16', 'number', ['number']);
+    wasm_set_bitplane_guess = Module.cwrap('wasm_set_bitplane_guess', 'undefined', ['number']);
+    wasm_get_bitplane_areas = Module.cwrap('wasm_get_bitplane_areas', 'string');
     wasm_poke = Module.cwrap('wasm_poke', 'undefined', ['number', 'number']);
     wasm_has_disk = Module.cwrap('wasm_has_disk', 'number', ['string']);
     wasm_eject_disk = Module.cwrap('wasm_eject_disk', 'undefined', ['string']);
