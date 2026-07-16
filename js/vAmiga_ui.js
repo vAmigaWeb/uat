@@ -2034,6 +2034,8 @@ function InitWrappers() {
     wasm_peek16 = Module.cwrap('wasm_peek16', 'number', ['number']);
     wasm_set_bitplane_guess = Module.cwrap('wasm_set_bitplane_guess', 'undefined', ['number']);
     wasm_get_bitplane_areas = Module.cwrap('wasm_get_bitplane_areas', 'string');
+    wasm_set_write_tracking = Module.cwrap('wasm_set_write_tracking', 'undefined', ['number']);
+    wasm_get_write_owner = Module.cwrap('wasm_get_write_owner', 'number', ['number']);
     wasm_poke = Module.cwrap('wasm_poke', 'undefined', ['number', 'number']);
     wasm_has_disk = Module.cwrap('wasm_has_disk', 'number', ['string']);
     wasm_eject_disk = Module.cwrap('wasm_eject_disk', 'undefined', ['string']);
@@ -3206,7 +3208,7 @@ activity_monitor_switch.change( function() {
         if(value)
         {
             $('#button_retro_shell').show();
-            $('#retro_shell_enabled_help').text('The RetroShell icon is now shown in the menu bar. Open RetroShell to debug, browse files, tweak settings, and more.');
+            $('#retro_shell_enabled_help').text('The RetroShell icon is shown in the menu bar. Open RetroShell to debug, browse files, tweak settings, and more.');
         }
         else
         {
@@ -3227,7 +3229,7 @@ activity_monitor_switch.change( function() {
         if(value)
         {
             $('#button_memview').show();
-            $('#memview_enabled_help').text('The live memory view icon is now shown in the menu bar.');
+            $('#memview_enabled_help').text('The live memory view icon is shown in the menu bar.');
         }
         else
         {
@@ -3240,11 +3242,22 @@ activity_monitor_switch.change( function() {
         }
         memview_enabled_switch.prop('checked', value);
     }
-    set_memview_enabled(load_setting('memview_enabled', false));
+    // default on for devices at least as wide as a landscape iPhone Pro Max
+    // (~926 CSS px); use the larger screen dimension so orientation at load
+    // time does not matter
+    let memview_default = Math.max(
+        (window.screen && window.screen.width) || window.innerWidth || 0,
+        (window.screen && window.screen.height) || window.innerHeight || 0
+    ) >= 926;
+    set_memview_enabled(load_setting('memview_enabled', memview_default));
     memview_enabled_switch.change( function() {
         save_setting('memview_enabled', this.checked);
         set_memview_enabled(this.checked);
     });
+    // bind via pointerup (like the other toolbar icons) instead of an inline
+    // onclick, so it fires reliably on iOS landscape where the synthetic click
+    // event can get swallowed by touch/gesture handling of overlaying elements
+    add_click("button_memview", memview_toggle);
 
 //------
 function bind_config(key, default_value){
@@ -3937,6 +3950,14 @@ $('.layer').change( function(event) {
     emulator_currently_runs=false;
     add_click("button_run", function() {
         hide_all_tooltips();
+        // if slow-motion single stepping (memview slomo) is active, a run/pause
+        // click cancels it immediately. don't auto-resume here (resume=false) -
+        // the normal run/pause toggle below handles the running state.
+        if(typeof memview_slomo_timer !== "undefined" && memview_slomo_timer !== null &&
+           typeof memview_slomo_stop === "function")
+        {
+            memview_slomo_stop(false);
+        }
         if(running)
         {        
             wasm_halt();
@@ -6412,10 +6433,10 @@ function add_monitor(id, label, splitted=false)
 
     color=[];
     color.copper={start: '51,51,0', end:'255,255,0'}
-    color.blitter={start: `50,${parseInt('cc',16)*0.2},0`, end:`${parseInt('ff',16)},${parseInt('cc',16)},0`}
+    color.blitter={start: `7,30,49`, end:`33,150,243`}
     color.disk={start: `0,51,0`, end:`0,255,0`}
     color.audio={start: '50,0,50', end:'255,0,255'}
-    color.sprite={start: `0,${parseInt('88',16)*0.2},51`, end:`0,${parseInt('88',16)},255`}
+    color.sprite={start: `51,28,0`, end:`255,140,0`}
     color.bitplane={start: '0,50,50', end:'0,255,255'}
     color.CPU={start: '50,50,50', end:'255,255,255'}
 
@@ -6491,67 +6512,89 @@ function add_monitor(id, label, splitted=false)
     {
         activity_intervall = setInterval(()=>{
             if(!running) return;
-            
-            for(id in dma_channels){
-                if(dma_channel_history[id]===undefined)
-                    continue;
-                let value=_wasm_activity(activity_id[id]);
-                value = (Math.log(1+19*value) / Math.log(20)) * 100;
-                value = value>100 ? 100: Math.round(value);
+            update_activity_monitors();
+        },400);
+    }
+}
 
-                if(Array.isArray(dma_channel_history[id][0]))
+// pushes the latest DMA/CPU activity values into the monitor bars. normally
+// driven by the interval above (only while running); also called explicitly by
+// the memory view "single step" so the monitors update on a paused single frame.
+const activity_channel_id = {
+    copper: 0,
+    blitter: 1,
+    disk: 2,
+    audio: 3,
+    sprite: 4,
+    bitplane: 5,
+    chipRam: 6,
+    slowRam: 7,
+    fastRam: 8,
+    kickRom: 9,
+    waveformL:10, waveformR:11
+};
+function update_activity_monitors()
+{
+    if(typeof dma_channels === "undefined" || typeof _wasm_activity !== "function")
+        return;
+    for(id in dma_channels){
+        if(dma_channel_history[id]===undefined)
+            continue;
+        let value=_wasm_activity(activity_channel_id[id]);
+        value = (Math.log(1+19*value) / Math.log(20)) * 100;
+        value = value>100 ? 100: Math.round(value);
+
+        if(Array.isArray(dma_channel_history[id][0]))
+        {
+            for(let i=0;i<20-1;i++)
+            {
+                let newer_upper_value=dma_channel_history_values[id][i+1][0];
+                if(dma_channel_history_values[id][i][0] !==newer_upper_value)
                 {
-                    for(let i=0;i<20-1;i++)
-                    {
-                        let newer_upper_value=dma_channel_history_values[id][i+1][0];
-                        if(dma_channel_history_values[id][i][0] !==newer_upper_value)
-                        {
-                            dma_channel_history[id][i][0].style.setProperty("--barval", newer_upper_value);
-                            dma_channel_history_values[id][i][0]=newer_upper_value;
-                        }
-
-                        let newer_lower_value=dma_channel_history_values[id][i+1][1];
-                        if(dma_channel_history_values[id][i][1] !==newer_lower_value)
-                        {
-                            dma_channel_history[id][i][1].style.setProperty("--barval", newer_lower_value);
-                            dma_channel_history_values[id][i][1]=newer_lower_value;
-                        }
-                    }
-
-                    if(value !== dma_channel_history_values[id][20-1][0])
-                    {    
-                        dma_channel_history_values[id][20-1][0]= value;           
-                        dma_channel_history[id][20-1][0].style.setProperty("--barval", value);
-                    }
-
-                    value=_wasm_activity(activity_id[id],1);
-                    value = (Math.log(1+19*value) / Math.log(20)) * 100;
-                    value = value>100 ? 100: Math.round(value);    
-                    if(value !== dma_channel_history_values[id][20-1][1])
-                    {         
-                        dma_channel_history_values[id][20-1][1]= value;  
-                        dma_channel_history[id][20-1][1].style.setProperty("--barval", value);
-                    }
+                    dma_channel_history[id][i][0].style.setProperty("--barval", newer_upper_value);
+                    dma_channel_history_values[id][i][0]=newer_upper_value;
                 }
-                else
+
+                let newer_lower_value=dma_channel_history_values[id][i+1][1];
+                if(dma_channel_history_values[id][i][1] !==newer_lower_value)
                 {
-                    for(let i=0;i<20-1;i++)
-                    {
-                        let newer_value = dma_channel_history_values[id][i+1];
-                        if(dma_channel_history_values[id][i] !== newer_value)
-                        {
-                            dma_channel_history[id][i].style.setProperty("--barval", newer_value);
-                            dma_channel_history_values[id][i]=newer_value;
-                        }
-                    }
-                    if(value !== dma_channel_history_values[id][20-1])
-                    {
-                        dma_channel_history_values[id][20-1]= value;
-                        dma_channel_history[id][20-1].style.setProperty("--barval", value);
-                    }
+                    dma_channel_history[id][i][1].style.setProperty("--barval", newer_lower_value);
+                    dma_channel_history_values[id][i][1]=newer_lower_value;
                 }
             }
-        },400);
+
+            if(value !== dma_channel_history_values[id][20-1][0])
+            {    
+                dma_channel_history_values[id][20-1][0]= value;           
+                dma_channel_history[id][20-1][0].style.setProperty("--barval", value);
+            }
+
+            value=_wasm_activity(activity_channel_id[id],1);
+            value = (Math.log(1+19*value) / Math.log(20)) * 100;
+            value = value>100 ? 100: Math.round(value);    
+            if(value !== dma_channel_history_values[id][20-1][1])
+            {         
+                dma_channel_history_values[id][20-1][1]= value;  
+                dma_channel_history[id][20-1][1].style.setProperty("--barval", value);
+            }
+        }
+        else
+        {
+            for(let i=0;i<20-1;i++)
+            {
+                let newer_value = dma_channel_history_values[id][i+1];
+                if(dma_channel_history_values[id][i] !== newer_value)
+                {
+                    dma_channel_history[id][i].style.setProperty("--barval", newer_value);
+                    dma_channel_history_values[id][i]=newer_value;
+                }
+            }
+            if(value !== dma_channel_history_values[id][20-1])
+            {
+                dma_channel_history_values[id][20-1]= value;
+                dma_channel_history[id][20-1].style.setProperty("--barval", value);
+            }
+        }
     }
 }
 
