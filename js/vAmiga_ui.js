@@ -2036,6 +2036,15 @@ function InitWrappers() {
     wasm_get_bitplane_areas = Module.cwrap('wasm_get_bitplane_areas', 'string');
     wasm_set_write_tracking = Module.cwrap('wasm_set_write_tracking', 'undefined', ['number']);
     wasm_get_write_owner = Module.cwrap('wasm_get_write_owner', 'number', ['number']);
+    wasm_get_write_owner_ptr = Module.cwrap('wasm_get_write_owner_ptr', 'number');
+    wasm_get_write_frame_ptr = Module.cwrap('wasm_get_write_frame_ptr', 'number');
+    wasm_get_read_frame_ptr = Module.cwrap('wasm_get_read_frame_ptr', 'number');
+    wasm_get_access_frame = Module.cwrap('wasm_get_access_frame', 'number');
+    wasm_get_access_chip_size = Module.cwrap('wasm_get_access_chip_size', 'number');
+    wasm_get_access_slow_size = Module.cwrap('wasm_get_access_slow_size', 'number');
+    wasm_get_access_fast_size = Module.cwrap('wasm_get_access_fast_size', 'number');
+    wasm_get_fast_base = Module.cwrap('wasm_get_fast_base', 'number');
+    wasm_get_rom_size = Module.cwrap('wasm_get_rom_size', 'number');
     wasm_poke = Module.cwrap('wasm_poke', 'undefined', ['number', 'number']);
     wasm_has_disk = Module.cwrap('wasm_has_disk', 'number', ['string']);
     wasm_eject_disk = Module.cwrap('wasm_eject_disk', 'undefined', ['string']);
@@ -2651,17 +2660,27 @@ function InitWrappers() {
         } 
     }
 
+    // gestures that land on the docked memory view panel (its sliders, buttons
+    // and scrollable info body) must not drive the emulated amiga mouse/pencil
+    let event_in_memview = function(e) {
+        let t = e && e.target;
+        return t && t.closest && t.closest('#memview_panel') !== null;
+    };
+
     // Register pencil event listeners if pointer events are supported
     function handlePointerDown(e) {
         if (pencil_port === null) return;
+        if (event_in_memview(e)) return;
         emulate_mouse_pencil_down(e);
     }
     function handlePointerMove(e) {
         if (pencil_port === null) return;
+        if (event_in_memview(e)) return;
         emulate_mouse_pencil_move(e);
     }
     function handlePointerUp(e) {
         if (pencil_port === null) return;
+        if (event_in_memview(e)) return;
         emulate_mouse_pencil_up(e);
     }
     function updatePencilListeners() {
@@ -2684,6 +2703,7 @@ function InitWrappers() {
 
     function emulate_mouse_touchpad_start(e)
     {
+        if (event_in_memview(e)) return;
         for (var i=0; i < e.changedTouches.length; i++) {
             let touch = e.changedTouches[i];
         
@@ -6441,7 +6461,10 @@ function add_monitor(id, label, splitted=false)
     color.CPU={start: '50,50,50', end:'255,255,255'}
 
 
-    document.querySelector(`#monitor_${id}`).addEventListener('click', 
+    // bind via pointerup (not click) so it also fires for apple pencil taps,
+    // which do not reliably generate a synthetic click on ipad safari (this is
+    // why the toolbar icons use add_click/pointerup too)
+    document.querySelector(`#monitor_${id}`).addEventListener('pointerup', 
         (e)=>{
             let id=e.currentTarget.id.replace('monitor_','');
             if(id.includes("Ram") || id.includes("Rom"))
