@@ -3408,13 +3408,17 @@ $("#cb_df0_poll_sound").change( function() {
 bind_config_choice("OPT_DRIVE_SPEED", "floppy drive speed",['-1', '1', '2', '4', '8'],'1');
 
 var amiga_models = {
-    "Amiga 1000": { agnus: "OCS_OLD", denise: "OCS", chip: "256", slow: "0", fast: "0", cpu: "0", clock: "0" },
-    "Amiga 500":  { agnus: "OCS",     denise: "OCS", chip: "512", slow: "0", fast: "0", cpu: "0", clock: "0" },
-    "Amiga 500+": { agnus: "ECS_1MB", denise: "ECS", chip: "1024", slow: "0", fast: "0", cpu: "0", clock: "0" },
-    "Amiga 600":  { agnus: "ECS_2MB", denise: "ECS", chip: "1024", slow: "0", fast: "0", cpu: "0", clock: "0" },
-    "Amiga 1200": { agnus: "AGA",     denise: "AGA", chip: "2048", slow: "0", fast: "2048", cpu: "2", clock: "2" },
-    "Amiga 4000": { agnus: "AGA",     denise: "AGA", chip: "2048", slow: "0", fast: "8192", cpu: "2", clock: "2" }
+    "A1000": { name: "Amiga 1000", chipset: "OCS", agnus: "OCS_OLD", denise: "OCS", chip: "512", slow: "0", fast: "0", cpu: "0", clock: "0" },
+    "A500":  { name: "Amiga 500",  chipset: "OCS", agnus: "OCS",     denise: "OCS", chip: "512", slow: "0", fast: "0", cpu: "0", clock: "0" },
+    "A500+": { name: "Amiga 500+", chipset: "ECS", agnus: "ECS_1MB", denise: "ECS", chip: "1024", slow: "0", fast: "0", cpu: "0", clock: "0" },
+    "A600":  { name: "Amiga 600",  chipset: "ECS", agnus: "ECS_2MB", denise: "ECS", chip: "1024", slow: "0", fast: "0", cpu: "0", clock: "0" },
+    "A1200": { name: "Amiga 1200", chipset: "AGA", agnus: "AGA",     denise: "AGA", chip: "2048", slow: "0", fast: "2048", cpu: "2", clock: "2" },
 };
+
+function model_display(key) {
+    let preset = amiga_models[key];
+    return preset ? `${preset.name} - ${preset.chipset}` : key;
+}
 
 function get_hardware_display(key, value) {
     if (key == 'OPT_AGNUS_REVISION') {
@@ -3452,10 +3456,10 @@ function update_hardware_button(key, value) {
     $(`#button_${key}`).html(`${name}${name.length > 0 ? '=' : ''}${display}`);
 }
 
-function apply_model(model_name) {
-    let preset = amiga_models[model_name];
+function apply_model(model_key) {
+    let preset = amiga_models[model_key];
     if (!preset) return;
-    save_setting('OPT_AMIGA_MODEL', model_name);
+    save_setting('OPT_AMIGA_MODEL', model_key);
 
     set_hardware('OPT_AGNUS_REVISION', preset.agnus);
     set_hardware('OPT_DENISE_REVISION', preset.denise);
@@ -3475,13 +3479,14 @@ function apply_model(model_name) {
     update_hardware_button('OPT_CPU_REVISION', preset.cpu);
     update_hardware_button('OPT_CPU_OVERCLOCKING', preset.clock);
 
-    $('#button_OPT_AMIGA_MODEL').html(`model=${model_name}`);
+    $('#button_OPT_AMIGA_MODEL').html(`model=${model_display(model_key)}`);
 }
 
-let current_model = load_setting('OPT_AMIGA_MODEL', 'Amiga 500');
+let current_model = load_setting('OPT_AMIGA_MODEL', 'A500');
+if (!amiga_models[current_model]) current_model = 'A500';
 let model_list = '';
-for (let m of Object.keys(amiga_models)) {
-    model_list += `<a class="dropdown-item" href="#">${m}</a>`;
+for (let key of Object.keys(amiga_models)) {
+    model_list += `<a class="dropdown-item" href="#" data-model="${key}">${model_display(key)}</a>`;
 }
 $('#hardware_settings').append(`<div class="mt-4">model settings</div>`);
 $('#hardware_settings').append(`
@@ -3496,12 +3501,12 @@ $('#hardware_settings').append(`
 `);
 
 $('#choose_OPT_AMIGA_MODEL a').click(function () {
-    let choice = $(this).html();
+    let choice = $(this).attr('data-model');
     apply_model(choice);
     $("#modal_settings").focus();
 });
 
-$('#button_OPT_AMIGA_MODEL').html(`model=${current_model}`);
+$('#button_OPT_AMIGA_MODEL').html(`model=${model_display(current_model)}`);
 
 $('#hardware_settings').append(`<div class="mt-4">hardware settings</div><span style="font-size: smaller;">(shuts machine down on agnus model or memory change)</span>`);
 
