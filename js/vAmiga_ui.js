@@ -21,6 +21,9 @@ let call_param_kickstart_ext_url=null;
 let patch_kickemu_address=null;
 let patch_kickemu_rom=null;
 
+const agnus_revs=['OCS_OLD','OCS','ECS_1MB','ECS_2MB','AGA'];
+const denise_revs=['OCS','ECS','AGA'];
+
 let startup_script_executed=false;
 let on_ready_to_run=()=>{};
 let on_hdr_step=(drive_number, cylinder)=>{};
@@ -514,11 +517,45 @@ function message_handler_queue_worker(msg, data, data2)
         required_roms_loaded=true;
         emulator_currently_runs=true;
         document.body.setAttribute('warpstate',Module._wasm_is_warping());
+
+        // the core can autonomously resume emulation (e.g. RetroShell
+        // 'run', 'step' or 'next' commands). there is no native background
+        // thread in the wasm build - execution is entirely driven by the
+        // JS requestAnimationFrame loop - so make sure that loop is
+        // actually running and the UI reflects that, even if the user
+        // didn't click button_run.
+        if(!running)
+        {
+            running = true;
+            try { audioContext.resume(); } catch(e){ console.error(e); }
+            $('#button_run').html(`<svg class="bi bi-pause-fill" width="1.6em" height="1.6em" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <path d="M5.5 3.5A1.5 1.5 0 0 1 7 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5zm5 0A1.5 1.5 0 0 1 12 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5z"/>
+          </svg>`).parent().attr("title", "pause").attr("data-original-title", "pause");
+            if(stop_request_animation_frame && typeof do_animation_frame === 'function')
+            {
+                stop_request_animation_frame = false;
+                requestAnimationFrame(do_animation_frame);
+            }
+        }
     }
     else if(msg == "MSG_PAUSE")
     {
         emulator_currently_runs=false;
         document.body.setAttribute('warpstate', 0);
+
+        // the core can autonomously pause emulation (e.g. breakpoint,
+        // watchpoint or beam trap hit in the RetroShell debugger). reflect
+        // that in the UI even though the user didn't click button_run.
+        if(running)
+        {
+            stop_request_animation_frame = true;
+            running = false;
+            try { audioContext.suspend(); } catch(e){ console.error(e); }
+            $('#button_run').html(`<svg class="bi bi-play-fill" width="1.6em" height="1.6em" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <path d="M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/>
+          </svg>`).parent().attr("title", "run").attr("data-original-title", "run");
+            check_wake_lock();
+        }
     }
     else if(msg === "MSG_WARP")
     {
@@ -536,7 +573,10 @@ function message_handler_queue_worker(msg, data, data2)
     }
     else if(msg == "MSG_VIDEO_FORMAT")
     {
-        $('#ntsc_pixel_ratio_switch').prop('checked', data==1);  
+        let is_ntsc = (data == 1);
+        use_ntsc_pixel = is_ntsc;
+        document.body.setAttribute("ntsc", is_ntsc);
+        $('#ntsc_pixel_ratio_switch').prop('checked', is_ntsc);  
     }
     else if(msg == "MSG_DRIVE_STEP" || msg == "MSG_DRIVE_POLL")
     {
@@ -597,21 +637,23 @@ function message_handler_queue_worker(msg, data, data2)
         v=wasm_get_config_item("CPU.OVERCLOCKING");
         $(`#button_OPT_CPU_OVERCLOCKING`).text(`${Math.round((v==0?1:v)*7.09)} MHz ${cause}`);
         v=wasm_get_config_item("AGNUS.REVISION");
-        let agnus_revs=['OCS_OLD','OCS','ECS_1MB','ECS_2MB','AGA'];
         let agnus_description = agnus_map.filter((e) => e.v == agnus_revs[v]);
-        agnus_description= agnus_description.length>0 ? agnus_description[0].t : agnus_revs[v];
+        agnus_description= agnus_description.length>0 ? chip_desc_display(agnus_description[0].t) : agnus_revs[v];
         $(`#button_OPT_AGNUS_REVISION`).html(`agnus revision=${agnus_description} ${cause}`);
+        $(`#choose_OPT_AGNUS_REVISION a`).removeClass('active');
+        $(`#choose_OPT_AGNUS_REVISION a[data-choice="${agnus_revs[v]}"]`).addClass('active');
 
         v=wasm_get_config_item("DENISE.REVISION");
-        let denise_revs=['OCS','ECS','AGA'];
         let denise_description = denise_map.filter((e) => e.v == denise_revs[v]);
-        denise_description= denise_description.length>0 ? denise_description[0].t : denise_revs[v];
-        $(`#button_OPT_DENISE_REVISION`).text(`denise revision=${denise_description} ${cause}`);
+        denise_description= denise_description.length>0 ? chip_desc_display(denise_description[0].t) : denise_revs[v];
+        $(`#button_OPT_DENISE_REVISION`).html(`denise revision=${denise_description} ${cause}`);
       
-        $(`#button_${"OPT_CHIP_RAM"}`).text(`chip ram=${wasm_get_config_item('CHIP_RAM')} KB ${cause}`);
-        $(`#button_${"OPT_SLOW_RAM"}`).text(`slow ram=${wasm_get_config_item('SLOW_RAM')} KB ${cause}`);
-        $(`#button_${"OPT_FAST_RAM"}`).text(`fast ram=${wasm_get_config_item('FAST_RAM')} KB ${cause}`);
+        $(`#button_${"OPT_CHIP_RAM"}`).text(`chip ram=${format_ram(wasm_get_config_item('CHIP_RAM'))} ${cause}`);
+        $(`#button_${"OPT_SLOW_RAM"}`).text(`slow ram=${format_ram(wasm_get_config_item('SLOW_RAM'))} ${cause}`);
+        $(`#button_${"OPT_FAST_RAM"}`).text(`fast ram=${format_ram(wasm_get_config_item('FAST_RAM'))} ${cause}`);
     
+        update_model_from_hardware();
+
         wasm_configure("OPT_AMIGA_SPEED_BOOST", 
             current_speed.toString());
 
@@ -1914,6 +1956,10 @@ function InitWrappers() {
         Module.HEAPU8.set(file_buffer, file_slot_wasmbuf);
         let retVal=Module.ccall('wasm_loadFile', 'string', ['string','number','number', 'number'], [file_name,file_slot_wasmbuf,file_buffer.byteLength, drv_number]);
         Module._free(file_slot_wasmbuf);
+
+        if (typeof update_model_from_hardware === 'function') {
+            update_model_from_hardware();
+        }
         return retVal;                    
     }
     wasm_mem_patch = function (amiga_mem_address, file_buffer) {
@@ -2051,6 +2097,7 @@ function InitWrappers() {
     wasm_export_disk = Module.cwrap('wasm_export_disk', 'string', ['string', 'number', 'string']);
     wasm_export_as_folder = Module.cwrap('wasm_export_as_folder', 'string', ['string', 'string']);
     wasm_configure = Module.cwrap('wasm_configure', 'string', ['string', 'string']);
+    wasm_configure_multi = Module.cwrap('wasm_configure_multi', 'string', ['string']);
     wasm_configure_key = Module.cwrap('wasm_configure_key', 'string', ['string', 'string', 'string']);
     wasm_write_string_to_ser = Module.cwrap('wasm_write_string_to_ser', 'undefined', ['string']);
     wasm_print_error = Module.cwrap('wasm_print_error', 'undefined', ['number']);
@@ -3311,17 +3358,18 @@ function validate_hardware()
         let found=agnus_map.filter(e=>e.v==agnes);
         if(found.length>0) agnes_desc = found[0].t.split('|')[0].trim();
     }
+    agnes_desc = agnes_desc.replace(/<span[^>]*>.*?<\/span>/gi, '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
     if(agnes.startsWith("OCS") && chip_ram > 512)
     {
         alert(`${agnes_desc} agnus can address max. 512KB of chip ram. Correcting to highest possible setting.`);
         set_hardware("OPT_CHIP_RAM", '512');
-        $(`#button_${"OPT_CHIP_RAM"}`).text("chip ram"+'='+'512 KB (corrected)');
+        $(`#button_${"OPT_CHIP_RAM"}`).text("chip ram"+'='+format_ram(512)+' (corrected)');
     }
     else if(agnes== "ECS_1MB" && chip_ram > 1024)
     {
         alert(`${agnes_desc} agnus can address max. 1024KB of chip ram. Correcting to highest possible setting.`);
         set_hardware("OPT_CHIP_RAM", '1024');
-        $(`#button_${"OPT_CHIP_RAM"}`).text("chip ram"+'='+'1024 KB (corrected)');
+        $(`#button_${"OPT_CHIP_RAM"}`).text("chip ram"+'='+format_ram(1024)+' (corrected)');
     }
 }
 
@@ -3342,7 +3390,7 @@ function bind_config_choice(key, name, values, default_value, value2text=null, t
             (function(vals){
                 let list='';
                 for(val of vals){
-                    list+=`<a class="dropdown-item" href="#">${value2text(val)}</a>`;
+                    list+=`<a class="dropdown-item" href="#" data-choice="${val}">${value2text(val)}</a>`;
                 }
                 return list;
             })(values)
@@ -3351,8 +3399,15 @@ function bind_config_choice(key, name, values, default_value, value2text=null, t
     </div>
     `);
 
+    let set_active = function (val) {
+        $(`#choose_${key} a`).removeClass('active');
+        $(`#choose_${key} a[data-choice="${val}"]`).addClass('active');
+    }
+    let show_choice = function (text) {
+        $(`#button_${key}`).html(`${name}${name.length>0?'=':''}${text}`);
+    }
     let set_choice = function (choice) {
-        $(`#button_${key}`).html(`${name}${name.length>0?'=':''}${choice}`);
+        let previous = load_setting(key, default_value);
         save_setting(key, text2value(choice));
         validate_hardware(); 
 
@@ -3360,10 +3415,17 @@ function bind_config_choice(key, name, values, default_value, value2text=null, t
         if(result.length>0)
         {
             alert(result);
+            save_setting(key, previous);
+            show_choice(value2text(previous));
+            set_active(previous);
             validate_hardware();
             wasm_power_on(1);
+            if(updated_func!=null)
+                updated_func(value2text(previous));
             return;
         }
+        show_choice(choice);
+        set_active(text2value(choice));
         if(updated_func!=null)
             updated_func(choice);
     }
@@ -3407,30 +3469,85 @@ $("#cb_df0_poll_sound").change( function() {
 
 bind_config_choice("OPT_DRIVE_SPEED", "floppy drive speed",['-1', '1', '2', '4', '8'],'1');
 
+const CUSTOM_MODEL_KEY = 'CUSTOM';
+
 var amiga_models = {
-    "A1000": { name: "Amiga 1000", chipset: "OCS", agnus: "OCS_OLD", denise: "OCS", chip: "512", slow: "0", fast: "0", cpu: "0", clock: "0" },
-    "A500":  { name: "Amiga 500",  chipset: "OCS", agnus: "OCS",     denise: "OCS", chip: "512", slow: "0", fast: "0", cpu: "0", clock: "0" },
-    "A500+": { name: "Amiga 500+", chipset: "ECS", agnus: "ECS_1MB", denise: "ECS", chip: "1024", slow: "0", fast: "0", cpu: "0", clock: "0" },
-    "A600":  { name: "Amiga 600",  chipset: "ECS", agnus: "ECS_2MB", denise: "ECS", chip: "1024", slow: "0", fast: "0", cpu: "0", clock: "0" },
-    "A1200": { name: "Amiga 1200", chipset: "AGA", agnus: "AGA",     denise: "AGA", chip: "2048", slow: "0", fast: "2048", cpu: "2", clock: "2" },
+    "A1000": { name: "A1000", chipset: "OCS <span style='font-size: x-small; display: inline-block; line-height: 1.1; vertical-align: top'>early<br>rev.</span>", agnus: "OCS_OLD", denise: "OCS", chip: "512", slow: "0", fast: "0", cpu: "0", clock: "0" },
+    "A500_UNEXPANDED": { name: "A500", chipset: "OCS", agnus: "OCS", denise: "OCS", chip: "512", slow: "0", fast: "0", cpu: "0", clock: "0" },
+    "A500_VANILLA": { name: "A500", chipset: "OCS", agnus: "OCS", denise: "OCS", chip: "512", slow: "512", fast: "0", cpu: "0", clock: "0" },
+    "A500+_STOCK": { name: "A500+", chipset: "ECS", agnus: "ECS_2MB", denise: "ECS", chip: "1024", slow: "0", fast: "0", cpu: "0", clock: "0" },
+    "A500+_BOOST": { name: "A500+", chipset: "ECS", agnus: "ECS_2MB", denise: "ECS", chip: "2048", slow: "0", fast: "2048", cpu: "0", clock: "0" },
+    "A1200_STOCK": { name: "A1200", chipset: "AGA", agnus: "AGA", denise: "AGA", chip: "2048", slow: "0", fast: "0", cpu: "2", clock: "2" },
+    "A1200_BOOST": { name: "A1200", chipset: "AGA", agnus: "AGA", denise: "AGA", chip: "2048", slow: "0", fast: "8192", cpu: "2", clock: "4" }
 };
 
+function format_ram(kb) {
+    let v = parseInt(kb);
+    if (isNaN(v)) return `${kb}`;
+    return (v >= 1024 && v % 1024 === 0) ? `${v / 1024} MB` : `${v} KB`;
+}
+
+window.format_ram = format_ram;
+
+function parse_ram(text) {
+    let v = parseFloat(text);
+    if (isNaN(v)) return text;
+    return `${text}`.indexOf('MB') >= 0 ? v * 1024 : v;
+}
+
+function model_ram_display(m) {
+    let parts = [];
+    if (parseInt(m.chip) > 0) parts.push(`${format_ram(m.chip)} chip`);
+    if (parseInt(m.slow) > 0) parts.push(`${format_ram(m.slow)} slow`);
+    if (parseInt(m.fast) > 0) parts.push(`${format_ram(m.fast)} fast`);
+    return parts.length > 0 ? parts.join(' + ') : 'no ram';
+}
+
+function model_cpu_display(m) {
+    let cpu = get_hardware_display('OPT_CPU_REVISION', parseInt(m.cpu));
+    let clock = get_hardware_display('OPT_CPU_OVERCLOCKING', parseInt(m.clock));
+    return `${cpu} @ ${clock}`;
+}
+
 function model_display(key) {
-    let preset = amiga_models[key];
-    return preset ? `${preset.name} - ${preset.chipset}` : key;
+    let m = amiga_models[key];
+    if (!m) return key;
+    let name = String(m.name).replace(/_/g, ' ');
+    let chipset = String(m.chipset).replace(/_/g, ' ');
+    return `${name} (${chipset}) <span style="font-size: x-small;vertical-align: top;display: inline-block;line-height: 1.2;text-align: left;">${model_cpu_display(m)}<br>${model_ram_display(m)}</span>`;
+}
+
+function chip_desc_display(t) {
+    let parts = String(t).split('|');
+    if (parts.length < 2) return t;
+    let tail = parts.slice(1).join('|').trim();
+    let bracket = tail.lastIndexOf('(');
+    if (bracket > 0) tail = `${tail.substring(0, bracket).trim()}<br>${tail.substring(bracket)}`;
+    return `${parts[0].trim()} <span style="font-size: x-small;vertical-align: top;display: inline-block;line-height: 1.2;text-align: left;">${tail}</span>`;
+}
+
+window.chip_desc_display = chip_desc_display;
+
+function chip_desc_lookup(map, t) {
+    let clean = String(t).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    let found = map.filter(e => {
+        let raw = String(e.t).split('|')[0].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        return clean.startsWith(raw) || raw.startsWith(clean);
+    });
+    return found.length > 0 ? found[0].v : t;
 }
 
 function get_hardware_display(key, value) {
     if (key == 'OPT_AGNUS_REVISION') {
         let found = agnus_map.filter(e => e.v === value);
-        return found.length > 0 ? found[0].t : value;
+        return found.length > 0 ? chip_desc_display(found[0].t) : value;
     }
     if (key == 'OPT_DENISE_REVISION') {
         let found = denise_map.filter(e => e.v === value);
-        return found.length > 0 ? found[0].t : value;
+        return found.length > 0 ? chip_desc_display(found[0].t) : value;
     }
     if (key == 'OPT_CHIP_RAM' || key == 'OPT_SLOW_RAM' || key == 'OPT_FAST_RAM') {
-        return `${value} KB`;
+        return format_ram(value);
     }
     if (key == 'OPT_CPU_REVISION') {
         return value == 4 ? `fake 030 for Settlers map size 8` : (68000 + value * 10);
@@ -3454,22 +3571,66 @@ function update_hardware_button(key, value) {
     };
     let name = names[key] || '';
     $(`#button_${key}`).html(`${name}${name.length > 0 ? '=' : ''}${display}`);
+    let active_val = String(value);
+    if (key === 'OPT_AGNUS_REVISION' && agnus_revs[value] !== undefined) active_val = agnus_revs[value];
+    if (key === 'OPT_DENISE_REVISION' && denise_revs[value] !== undefined) active_val = denise_revs[value];
+    $(`#choose_${key} a`).removeClass('active');
+    $(`#choose_${key} a[data-choice="${active_val}"]`).addClass('active');
+}
+
+function model_entry_html(key) {
+    return `<a class="dropdown-item" href="#" data-model="${key}">${model_display(key)}</a>`;
+}
+
+function set_custom_model(m) {
+    amiga_models[CUSTOM_MODEL_KEY] = m;
+    let existing = $(`#choose_OPT_AMIGA_MODEL a[data-model="${CUSTOM_MODEL_KEY}"]`);
+    if (existing.length > 0) {
+        existing.replaceWith(model_entry_html(CUSTOM_MODEL_KEY));
+    } else {
+        $('#choose_OPT_AMIGA_MODEL').append(model_entry_html(CUSTOM_MODEL_KEY));
+    }
+}
+
+function remove_custom_model() {
+    delete amiga_models[CUSTOM_MODEL_KEY];
+    $(`#choose_OPT_AMIGA_MODEL a[data-model="${CUSTOM_MODEL_KEY}"]`).remove();
+}
+
+function show_current_model(model_key) {
+    current_model = model_key;
+    $('#button_OPT_AMIGA_MODEL').html(`model=${model_display(model_key)}`);
+    $('#choose_OPT_AMIGA_MODEL a').removeClass('active');
+    $(`#choose_OPT_AMIGA_MODEL a[data-model="${model_key}"]`).addClass('active');
 }
 
 function apply_model(model_key) {
     let preset = amiga_models[model_key];
     if (!preset) return;
-    save_setting('OPT_AMIGA_MODEL', model_key);
 
-    set_hardware('OPT_AGNUS_REVISION', preset.agnus);
-    set_hardware('OPT_DENISE_REVISION', preset.denise);
-    set_hardware('OPT_CHIP_RAM', preset.chip);
-    set_hardware('OPT_SLOW_RAM', preset.slow);
-    set_hardware('OPT_FAST_RAM', preset.fast);
-    set_hardware('OPT_CPU_REVISION', preset.cpu);
-    set_hardware('OPT_CPU_OVERCLOCKING', preset.clock);
+    let config_lines = [
+        `AGNUS_REVISION=${preset.agnus}`,
+        `DENISE_REVISION=${preset.denise}`,
+        `CHIP_RAM=${preset.chip}`,
+        `SLOW_RAM=${preset.slow}`,
+        `FAST_RAM=${preset.fast}`,
+        `CPU_REVISION=${preset.cpu}`,
+        `CPU_OVERCLOCKING=${preset.clock}`
+    ].join('\n');
 
-    validate_hardware();
+    let result = wasm_configure_multi(config_lines);
+    if (result.length > 0) {
+        alert(result);
+        return;
+    }
+
+    save_setting('OPT_AGNUS_REVISION', preset.agnus);
+    save_setting('OPT_DENISE_REVISION', preset.denise);
+    save_setting('OPT_CHIP_RAM', preset.chip);
+    save_setting('OPT_SLOW_RAM', preset.slow);
+    save_setting('OPT_FAST_RAM', preset.fast);
+    save_setting('OPT_CPU_REVISION', preset.cpu);
+    save_setting('OPT_CPU_OVERCLOCKING', preset.clock);
 
     update_hardware_button('OPT_AGNUS_REVISION', preset.agnus);
     update_hardware_button('OPT_DENISE_REVISION', preset.denise);
@@ -3479,14 +3640,77 @@ function apply_model(model_key) {
     update_hardware_button('OPT_CPU_REVISION', preset.cpu);
     update_hardware_button('OPT_CPU_OVERCLOCKING', preset.clock);
 
-    $('#button_OPT_AMIGA_MODEL').html(`model=${model_display(model_key)}`);
+    if (model_key !== CUSTOM_MODEL_KEY) remove_custom_model();
+    show_current_model(model_key);
 }
 
-let current_model = load_setting('OPT_AMIGA_MODEL', 'A500');
-if (!amiga_models[current_model]) current_model = 'A500';
+function update_model_from_hardware(preset=null) {
+    let agnus_v = wasm_get_config_item("AGNUS.REVISION");
+    let denise_v = wasm_get_config_item("DENISE.REVISION");
+    let cpu_v = wasm_get_config_item("CPU.REVISION");
+
+    let agnus = agnus_revs[agnus_v] !== undefined ? agnus_revs[agnus_v] : String(agnus_v);
+    let denise = denise_revs[denise_v] !== undefined ? denise_revs[denise_v] : String(denise_v);
+    let cpu = String(cpu_v);
+    let chip_v = String(wasm_get_config_item('CHIP_RAM'));
+    let slow_v = String(wasm_get_config_item('SLOW_RAM'));
+    let fast_v = String(wasm_get_config_item('FAST_RAM'));
+
+    let clock_v = String(wasm_get_config_item('CPU.OVERCLOCKING'));
+
+    // Keep the dedicated FAST RAM UI in sync with the core. In case it was altered by the Core due to AROS which needs 1MB
+    let saved_fast = load_setting('OPT_FAST_RAM', '2048');
+    if (fast_v !== saved_fast) {
+        save_setting('OPT_FAST_RAM', fast_v);
+        $(`#button_OPT_FAST_RAM`).text(`fast ram=${format_ram(fast_v)}`);
+    }
+
+    for (let key in amiga_models) {
+        if (key === CUSTOM_MODEL_KEY) continue;
+        let m = amiga_models[key];
+        if (m.agnus === agnus && m.denise === denise &&
+            m.chip === chip_v && m.slow === slow_v && m.fast === fast_v &&
+            String(m.cpu) === cpu && String(m.clock) === clock_v) {
+            remove_custom_model();
+            show_current_model(key);
+            return;
+        }
+    }
+
+    let base = null;
+    for (let key in amiga_models) {
+        if (key === CUSTOM_MODEL_KEY) continue;
+        let m = amiga_models[key];
+        if (m.agnus === agnus && m.denise === denise) {
+            base = m;
+            break;
+        }
+    }
+
+    // Agnus ECS 1MB + Denise OCS was a common A500 shipping variant
+    if (!base && agnus === 'ECS_1MB' && denise === 'OCS') {
+        base = { name: 'A500', chipset: 'ECS' };
+    }
+
+    set_custom_model({
+        name: base ? base.name : 'custom',
+        chipset: base ? base.chipset : agnus,
+        agnus: agnus,
+        denise: denise,
+        chip: chip_v,
+        slow: slow_v,
+        fast: fast_v,
+        cpu: String(cpu_v),
+        clock: clock_v
+    });
+    show_current_model(CUSTOM_MODEL_KEY);
+}
+window.update_model_from_hardware = update_model_from_hardware;
+
+var current_model = 'A500_VANILLA';
 let model_list = '';
 for (let key of Object.keys(amiga_models)) {
-    model_list += `<a class="dropdown-item" href="#" data-model="${key}">${model_display(key)}</a>`;
+    model_list += model_entry_html(key);
 }
 $('#hardware_settings').append(`<div class="mt-4">model settings</div>`);
 $('#hardware_settings').append(`
@@ -3500,19 +3724,19 @@ $('#hardware_settings').append(`
 </div>
 `);
 
-$('#choose_OPT_AMIGA_MODEL a').click(function () {
+$('#choose_OPT_AMIGA_MODEL').on('click', 'a', function () {
     let choice = $(this).attr('data-model');
     apply_model(choice);
     $("#modal_settings").focus();
 });
 
-$('#button_OPT_AMIGA_MODEL').html(`model=${model_display(current_model)}`);
+show_current_model(current_model);
 
 $('#hardware_settings').append(`<div class="mt-4">hardware settings</div><span style="font-size: smaller;">(shuts machine down on agnus model or memory change)</span>`);
 
 
 agnus_map = [
-    {v: "OCS_OLD", t:`Early OCS (512KB) | A1000, A2000a (<span id="MOS8367">MOS8367</span><span id="MOS8361">MOS8361</span>)`},
+    {v: "OCS_OLD", t:`OCS <span style='font-size: x-small; display: inline-block; line-height: 1.1; vertical-align: top'>early<br>rev.</span> (512KB)| A1000, A2000a (<span id="MOS8367">MOS8367</span><span id="MOS8361">MOS8361</span>)`},
     {v: "OCS", t:`OCS (512KB) | Early A500, A2000 (<span id="MOS8370">MOS8370</span><span id="MOS8371">MOS8371</span>)`},
     {v: "ECS_1MB", t:"ECS (1MB) | Later A500, A2000 (MOS8372A)"},
     {v: "ECS_2MB", t:"ECS (2MB) | A500+, A600 (MOS8375)"},
@@ -3522,41 +3746,30 @@ bind_config_choice("OPT_AGNUS_REVISION", "agnus revision",['OCS_OLD','OCS','ECS_
     (v)=> {
         let found = agnus_map.filter(e=>e.v === v);
         if(found.length>0)
-            return found[0].t;
+            return chip_desc_display(found[0].t);
         else
             return v;
     }
-    , t=>
-    {
-        let found = agnus_map.filter(e=>e.t.split('|')[0] === t.split('|')[0]);
-        if(found.length>0)
-            return found[0].v;
-        else
-            return t;
-    }
+    , t=> chip_desc_lookup(agnus_map, t),
+    null,
+    ()=>update_model_from_hardware()
 );
 
 denise_map = [ {v: "OCS", t:"OCS | A500, A1000, A2000 (MOS8362R8)"},
     {v: "ECS", t:"ECS | A500+, A600 (MOS8373R4)"},
-    {v: "AGA", t:"AGA | A1200, A4000 (MOS8364)"}];
-bind_config_choice("OPT_DENISE_REVISION", "denise revision",['OCS','ECS','AGA'],'OCS',(v)=> {
+    {v: "AGA", t:"AGA | A1200, A4000 (Lisa)"}];
+bind_config_choice("OPT_DENISE_REVISION", "denise revision",['OCS','ECS','AGA'],'ECS',(v)=> {
     let found = denise_map.filter(e=>e.v==v);
     if(found.length>0)
-        return found[0].t;
+        return chip_desc_display(found[0].t);
     else
         return v;
 }
-, t=>
-{
-    let found = denise_map.filter(e=>e.t==t);
-    if(found.length>0)
-        return found[0].v;
-    else
-        return t;
-});
-bind_config_choice("OPT_CHIP_RAM", "chip ram",['256', '512', '1024', '2048'],'2048', (v)=>`${v} KB`, t=>parseInt(t));
-bind_config_choice("OPT_SLOW_RAM", "slow ram",['0', '256', '512'],'0', (v)=>`${v} KB`, t=>parseInt(t));
-bind_config_choice("OPT_FAST_RAM", "fast ram",['0', '256', '512','1024', '2048', '8192'],'2048', (v)=>`${v} KB`, t=>parseInt(t));
+, t=> chip_desc_lookup(denise_map, t)
+,null,()=>update_model_from_hardware());
+bind_config_choice("OPT_CHIP_RAM", "chip ram",['256', '512', '1024', '2048'],'2048', (v)=>format_ram(v), t=>parse_ram(t), null, ()=>update_model_from_hardware());
+bind_config_choice("OPT_SLOW_RAM", "slow ram",['0', '256', '512'],'0', (v)=>format_ram(v), t=>parse_ram(t), null, ()=>update_model_from_hardware());
+bind_config_choice("OPT_FAST_RAM", "fast ram",['0', '256', '512','1024', '2048', '8192'],'2048', (v)=>format_ram(v), t=>parse_ram(t), null, ()=>update_model_from_hardware());
 
 $('#hardware_settings').append("<div id='divCPU' style='display:flex;flex-direction:row'></div>");
 bind_config_choice("OPT_CPU_REVISION", "CPU",[0,1,2,4], 0, 
@@ -3565,7 +3778,7 @@ bind_config_choice("OPT_CPU_REVISION", "CPU",[0,1,2,4], 0,
     let val = t.toString().replace("fake 030 for Settlers map size 8","68030");
     val = (val-68000)/10;
     return val==3 ?4: val;
-}, "#divCPU");
+}, "#divCPU", ()=>update_model_from_hardware());
 
 bind_config_choice("OPT_CPU_OVERCLOCKING", "",[0,2,3,4,5,6,8,12,14], 0, 
 (v)=>{ return Math.round((v==0?1:v)*7.09)+' MHz'},
@@ -3573,7 +3786,7 @@ bind_config_choice("OPT_CPU_OVERCLOCKING", "",[0,2,3,4,5,6,8,12,14], 0,
     let val =t.replace(' MHz','');
     val = Math.round(val /7.09);
     return val == 1 ? 0: val;
-},"#divCPU");
+},"#divCPU", ()=>update_model_from_hardware());
 $('#hardware_settings').append(`<div style="font-size: smaller" class="ml-3 vbk_choice_text">
 <span>7.09 Mhz</span> is the original speed of a stock A1000 or A500 machine. For effective overclocking be sure to enable fast ram and disable slow ram otherwise the overclocked CPU will get blocked by chipset DMA. CPU speed is proportional to energy consumption.
 </div>`);
@@ -4206,6 +4419,7 @@ $('.layer').change( function(event) {
 
     $('#modal_settings').on('show.bs.modal', function() 
     {    
+        update_model_from_hardware();
         for(var dn=0; dn<4; dn++)
         {
             if(wasm_has_disk("df"+dn))
@@ -4629,6 +4843,24 @@ $('.layer').change( function(event) {
     try{
         //when the serviceworker talks with us ...  
         navigator.serviceWorker.addEventListener("message", async (evt) => {
+            if (evt.data && (evt.data.type === 'downgrade_aga_to_ecs' || evt.data.downgrade_aga_to_ecs)) {
+                let downgraded = false;
+                if (localStorage.getItem('OPT_AGNUS_REVISION') === 'AGA') {
+                    localStorage.setItem('OPT_AGNUS_REVISION', 'ECS_2MB');
+                    downgraded = true;
+                }
+                if (localStorage.getItem('OPT_DENISE_REVISION') === 'AGA') {
+                    localStorage.setItem('OPT_DENISE_REVISION', 'ECS');
+                    downgraded = true;
+                }
+                if (downgraded) {
+                    console.log("Downgraded chipset settings from AGA to ECS because current version does not support AGA");
+                    window.location.reload();
+                }
+                if (evt.data.type === 'downgrade_aga_to_ecs') {
+                    return;
+                }
+            }
             await get_current_ui_version();
             let cache_names=null;
             try{
