@@ -131,7 +131,7 @@ function memview_init() {
         let rows = Math.round(e.deltaY * scale * rowsPerPixel);
         if (rows !== 0) {
             memview_set_start(memdump_start + rows * memview_row_stride);
-            if (!(live_memory_dump_enabled && is_running_safe())) memdump();
+            if (!memview_live_redraw_active()) memdump();
         }
     }, { passive: false });
 
@@ -154,12 +154,12 @@ function memview_init() {
         let rowsPerPixel = MEMVIEW_VPIXELS / canvasRect.height;
         let dyRows = Math.round((e.clientY - memview_drag_start_y) * rowsPerPixel);
         memview_set_start(memview_drag_start_addr - dyRows * memview_row_stride, true);
-        if (!(live_memory_dump_enabled && is_running_safe())) memdump();
+        if (!memview_live_redraw_active()) memdump();
     }, { passive: false });
     let end_detail_drag = function() {
         if (memview_pressed) {
             memview_pressed = false;
-            if (!(live_memory_dump_enabled && is_running_safe())) memdump();
+            if (!memview_live_redraw_active()) memdump();
         }
         memview_end_drag();
     };
@@ -173,7 +173,7 @@ function memview_init() {
             let v = parseInt(this.value.replace(/[^0-9a-fA-F]/g, ""), 16);
             if (!isNaN(v)) {
                 memview_set_start(v);
-                if (!(live_memory_dump_enabled && is_running_safe())) memdump();
+                if (!memview_live_redraw_active()) memdump();
             }
         });
     }
@@ -186,7 +186,7 @@ function memview_init() {
             if (isNaN(px) || px < 16) px = memview_words_per_row * 16;
             memview_set_width(px);
             this.value = String(memview_words_per_row * 16);
-            if (!(live_memory_dump_enabled && is_running_safe())) memdump();
+            if (!memview_live_redraw_active()) memdump();
         });
     }
 
@@ -370,6 +370,14 @@ function is_running_safe() {
     return typeof running !== "undefined" && running;
 }
 
+// true only while the requestAnimationFrame loop really redraws the detail view
+// every frame - then scrolling can skip its own (expensive) memdump(). during
+// slomo the core is halted and the loop is stopped, while `running` still holds
+// the user intent "run", so the redraw has to happen in the scroll handler.
+function memview_live_redraw_active() {
+    return live_memory_dump_enabled && is_running_safe() && memview_slomo_timer === null;
+}
+
 // suppress text/canvas selection while a drag is in progress (some browsers
 // invert the canvas colors when it becomes part of a selection)
 function memview_begin_drag() {
@@ -536,11 +544,15 @@ function memview_step_frame() {
     memview_advance_one_frame();
 }
 
-// computes and renders exactly one frame without changing the run state
+// computes and renders exactly one frame without changing the run state.
+// returns true if the core hit a breakpoint, watchpoint or beam trap.
 function memview_advance_one_frame() {
-    // compute exactly one frame synchronously
-    if (typeof Module !== "undefined" && typeof Module._wasm_execute === "function") {
-        Module._wasm_execute();
+    // compute exactly one frame synchronously. _wasm_execute() must not be used
+    // here: it refuses to compute anything while the core is paused - which is
+    // exactly the state single stepping and slomo operate in.
+    let trapped = false;
+    if (typeof Module !== "undefined" && typeof Module._wasm_execute_one_frame === "function") {
+        trapped = Module._wasm_execute_one_frame() != 0;
     }
     // draw the new frame to the amiga canvas
     let now = (typeof performance !== "undefined") ? performance.now() : 0;
@@ -552,11 +564,15 @@ function memview_advance_one_frame() {
     } else if (typeof render_canvas === "function") {
         render_canvas(now);
     }
-    // refresh the memory view and detected bitplane areas for this frame
+    // refresh the memory view and detected bitplane areas for this frame.
+    // while the user drags the view, the list is only rebuilt when its payload
+    // actually changed - a forced rebuild drops and recreates every list item
+    // and makes the drag stutter.
     memdump();
-    memview_refresh_bitplanes(true);
+    memview_refresh_bitplanes(!memview_pressed && !mempreview_pressed);
     // the activity monitor interval skips paused frames, so update it here too
     if (typeof update_activity_monitors === "function") update_activity_monitors();
+    return trapped;
 }
 
 // --- slomo: slow-motion single stepping -----------------------------------
@@ -566,7 +582,18 @@ var MEMVIEW_SLOMO_INTERVAL_MS = 500;     // one single-step every 500ms; user-ad
 var memview_slomo_timer = null;
 
 function memview_slomo_step() {
-    memview_advance_one_frame();
+    if (!memview_advance_one_frame()) return;
+
+    // the core hit a breakpoint, watchpoint or beam trap. stop stepping and
+    // turn the suspend into a real pause so the toolbar shows the same state as
+    // when a trap is hit at normal speed. the run/pause click below is safe:
+    // button_run_click() calls memview_slomo_stop() again, which returns right
+    // away because the timer has already been cleared.
+    memview_slomo_stop(false);
+    if (is_running_safe() && typeof app !== "undefined" &&
+        typeof app.button_run_click === "function") {
+        app.button_run_click();
+    }
 }
 
 function memview_slomo_toggle() {
