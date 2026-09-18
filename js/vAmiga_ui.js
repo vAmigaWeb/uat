@@ -2889,6 +2889,7 @@ function InitWrappers() {
     });
     
     $('#navbar').on('hide.bs.collapse', function () {
+        //close all open tooltips on hiding navbar
         hide_all_tooltips();
     });
 
@@ -2896,15 +2897,7 @@ function InitWrappers() {
     });
 
     add_click("button_show_menu", function() {
-        //$('#navbar').collapse('toggle');
-        let navbar = document.getElementById('navbar');
-        if(navbar.style.opacity == '0')
-        {
-            navbar.style.opacity = '0.85';
-        } else {
-            navbar.style.opacity = '0';
-        }
-        hide_all_tooltips();
+        $('#navbar').collapse('toggle');
     });
 
     burger_time_out_handle=null
