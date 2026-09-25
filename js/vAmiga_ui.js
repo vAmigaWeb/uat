@@ -2897,7 +2897,14 @@ function InitWrappers() {
     });
 
     add_click("button_show_menu", function() {
-        $('#navbar').collapse('toggle');
+        //$('#navbar').collapse('toggle');
+        let navbar = document.getElementById('navbar');
+        if(navbar.style.top == '0px')
+        {
+            navbar.style.top = '-150px';
+        } else {
+            navbar.style.top = '0px';
+        }
     });
 
     burger_time_out_handle=null
