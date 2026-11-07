@@ -151,21 +151,21 @@ const load_script= (url) => {
 
 imported_hd_path = '/imported_hd';
 exported_hd_path = '/exported_hd';
+const mounted_folders = new Set();
 async function mount_folder(folder_path) {
-    return new Promise((resolve, reject) => {
-        try{
-            FS.mkdir(folder_path) 
-        } catch(e) {console.log(e)}
-        try{
-            FS.mount(IDBFS, {}, folder_path);
-        } catch(e) {console.log(e)}
+    if (!FS.analyzePath(folder_path).exists) {
+        FS.mkdir(folder_path);
+    }
 
-        FS.syncfs(true, () => {
-        // Callback function when sync is complete
-            resolve();
-            console.log(`${folder_path} mounted`);
-        });
+    if (!mounted_folders.has(folder_path)) {
+        FS.mount(IDBFS, {}, folder_path);
+        mounted_folders.add(folder_path);
+    }
+
+    await new Promise((resolve, reject) => {
+        FS.syncfs(true, error => error ? reject(error) : resolve());
     });
+    console.log(`${folder_path} mounted`);
 }
 
 function ToBase64_small(u8) 
@@ -4683,57 +4683,48 @@ $('.layer').change( function(event) {
         
         global_apptitle = app_name;
 
-        await mount_folder(workspace_path);
         try
         {
-            deleteAllFiles(workspace_path+"/"+app_name);
-            FS.rmdir(workspace_path+"/"+app_name)
-        } catch(e) {console.log(e)}
-
-        try
-        {
-            FS.mkdir(workspace_path+"/"+app_name);
-        } catch(e) {console.log(e)}
-    
-        let thumbnail_json = wasm_save_workspace(workspace_path+"/"+app_name);
-        var thumbnail = JSON.parse(thumbnail_json);
-        var heap_buffer = new Uint8Array(Module.HEAPU8.buffer, thumbnail.address, thumbnail.size);
-            
-        //thumbnail_buffer is only a typed array view therefore slice, which creates a new array with byteposition 0 ...
-        let thumbnail_buffer = heap_buffer.slice(0,thumbnail.size);
-
-        let preview_canvas = document.createElement('canvas');
-        preview_canvas.width = thumbnail.width;  
-        preview_canvas.height = thumbnail.height;
-
-        var preview_ctx = preview_canvas.getContext('2d');  
-
-        image_data=preview_ctx.createImageData(thumbnail.width,thumbnail.height);
-        image_data.data.set(thumbnail_buffer);
-    
-        preview_ctx.putImageData(image_data,
-            0/*TPP*/,/*-yOff*/0, 
-            /*x,y*/ 
-            0/*TPP*/,/*yOff*/0 
-            /* width, height */, 
-            thumbnail.width, thumbnail.height);
-    
-        var dataURL = preview_canvas.toDataURL('image/png');
-        var uint8Array = FromBase64(dataURL.split(',')[1]);
-        FS.createDataFile(workspace_path+"/"+app_name+"/", 'preview.png', uint8Array, true, true);
-
-        if(last_zip_archive != null)
-        {
-            FS.createDataFile(workspace_path+"/"+app_name+"/", last_zip_archive_name, last_zip_archive, true, true);
-        }
-
-        FS.syncfs(false,(error)=>
-            {  
-                $("#modal_take_snapshot").modal('hide');
+            await mount_folder(workspace_path);
+            const workspace_dir = `${workspace_path}/${app_name}`;
+            if (FS.analyzePath(workspace_dir).exists) {
+                deleteAllFiles(workspace_dir);
+                FS.rmdir(workspace_dir);
             }
-        )
+            FS.mkdir(workspace_dir);
+    
+            const thumbnail = JSON.parse(wasm_save_workspace(workspace_dir));
+            const thumbnail_pixels = new Uint8Array(
+                Module.HEAPU8.buffer,
+                thumbnail.address,
+                thumbnail.size
+            ).slice();
+            const preview_canvas = document.createElement('canvas');
+            preview_canvas.width = thumbnail.width;
+            preview_canvas.height = thumbnail.height;
+            const preview_context = preview_canvas.getContext('2d');
+            if (preview_context === null) {
+                throw new Error("Could not create workspace preview canvas context");
+            }
+            const image_data = preview_context.createImageData(thumbnail.width, thumbnail.height);
+            image_data.data.set(thumbnail_pixels);
+            preview_context.putImageData(image_data, 0, 0);
+            const preview_data = FromBase64(preview_canvas.toDataURL('image/png').split(',')[1]);
+            FS.writeFile(`${workspace_dir}/preview.png`, Uint8Array.from(preview_data));
 
-        
+            if(last_zip_archive != null)
+            {
+                FS.writeFile(`${workspace_dir}/${last_zip_archive_name}`, last_zip_archive);
+            }
+
+            await new Promise((resolve, reject) => {
+                FS.syncfs(false, error => error ? reject(error) : resolve());
+            });
+            $("#modal_take_snapshot").modal('hide');
+        } catch (error) {
+            console.error("Failed to save workspace", error);
+            alert(`Failed to save workspace: ${error.message || error}`);
+        }
         //document.getElementById('canvas').focus();
     });
 
