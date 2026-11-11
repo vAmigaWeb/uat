@@ -25,12 +25,6 @@ function load_workspace(name){
         $("#drop_zone").html('<svg width="1.3em" height="1.3em" viewBox="0 0 16 16" class="bi bi-archive-fill" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M12.643 15C13.979 15 15 13.845 15 12.5V5H1v7.5C1 13.845 2.021 15 3.357 15h9.286zM5.5 7a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1h-5zM.8 1a.8.8 0 0 0-.8.8V3a.8.8 0 0 0 .8.8h14.4A.8.8 0 0 0 16 3V1.8a.8.8 0 0 0-.8-.8H.8z"/></svg> zip');
         $("#drop_zone").css("border", "3px solid var(--green)");
     }
-
-
-    if(!is_running())
-    {
-        app.button_run_click();
-    }     
 }
 
 function zip_and_download_folder(zip_filename, fs_path) {
@@ -492,10 +486,10 @@ var collectors = {
                 return;
             }
 
-            var src_data = item.data instanceof ArrayBuffer
-                ? new Uint8Array(item.data)
-                : new Uint8Array(item.data.buffer, item.data.byteOffset, item.data.byteLength);
-            var version = src_data[6] +'.'+src_data[7]+'.'+src_data[8];
+            var src_data = item.data;
+            
+            
+                var version = src_data[6] +'.'+src_data[7]+'.'+src_data[8];
             if(src_data[9]>0)
             {
                 version += `_beta${src_data[9]}`;
