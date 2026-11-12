@@ -151,9 +151,17 @@ const load_script= (url) => {
 
 imported_hd_path = '/imported_hd';
 exported_hd_path = '/exported_hd';
+function fs_exists(path) {
+    try {
+        FS.stat(path);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
 const mounted_folders = new Set();
 async function mount_folder(folder_path) {
-    if (!FS.analyzePath(folder_path).exists) {
+    if (!fs_exists(folder_path)) {
         FS.mkdir(folder_path);
     }
 
@@ -1099,7 +1107,7 @@ function configure_file_dialog(reset=false)
                         {
                             alternate_filename=null;
                             current_path = current_path.replace('/config.retrosh','').replace(".vamiga","").replace(".vamiga","").replace(".vamiga","")
-                            if (!FS.analyzePath(workspace_path+"/"+current_path).exists) {
+                            if (!fs_exists(workspace_path+"/"+current_path)) {
                                 FS.mkdir(workspace_path +"/"+ current_path);
                             }
                             else
@@ -1147,7 +1155,7 @@ function configure_file_dialog(reset=false)
                                 
 
                                 alternate_filename = incrementLastNumber(current_path)                              
-                                while (FS.analyzePath(workspace_path+"/"+alternate_filename).exists) {
+                                while (fs_exists(workspace_path+"/"+alternate_filename)) {
                                     alternate_filename = incrementLastNumber(alternate_filename)
                                 }
 
@@ -1395,7 +1403,7 @@ async function prompt_for_drive(folder=false)
                 if (!parts[i]) continue;
                 current += '/' + parts[i];
                 try {
-                    if (!FS.analyzePath(current).exists) {
+                    if (!fs_exists(current)) {
                         FS.mkdir(current);
                     }
                 } catch (e) {  }
@@ -4816,7 +4824,7 @@ $('.layer').change( function(event) {
         {
             await mount_folder(workspace_path);
             const workspace_dir = `${workspace_path}/${app_name}`;
-            if (FS.analyzePath(workspace_dir).exists) {
+            if (fs_exists(workspace_dir)) {
                 deleteAllFiles(workspace_dir);
                 FS.rmdir(workspace_dir);
             }
