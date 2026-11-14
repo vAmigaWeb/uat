@@ -803,7 +803,7 @@ function fill_rom_icons(){
         src: icon,
         alt: isKickSlopStart ? "KickSlopStart ROM" : "Kickstart ROM"
     });
-    $("#kickstart_title").html([rom_infos.romTitle, rom_infos.romVersion, rom_infos.romReleased, rom_infos.romModel]
+    $("#kickstart_title").html([rom_infos.romTitle, rom_infos.romVersion, rom_infos.romReleased]
         .map(value => $('<div>').text(value).html())
         .join("<br>"));
 
@@ -840,7 +840,7 @@ function fill_ext_icons()
     }
 
     $("#rom_kickstart_ext").attr("src", icon);
-    $("#kickstart_ext_title").html(`${rom_infos.extTitle}<br>${rom_infos.extVersion}<br>${rom_infos.extReleased}<br>${rom_infos.extModel}`);
+    $("#kickstart_ext_title").html(`${rom_infos.extTitle}<br>${rom_infos.extVersion}<br>${rom_infos.extReleased}`);
 
     $("#button_delete_kickstart_ext").show();
 }
