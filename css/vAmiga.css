@@ -261,6 +261,18 @@ color: #aaa !important;
 
     width: 100vw;
 }
+/* iPadOS27 bug: after closing a modal whose text input had the soft keyboard open,
+   safari blurs the top area. a permanent transparent fixed layer at the top edge
+   (same as the eruda container) keeps safari from doing that. */
+#top_edge_anchor {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 9999999;
+}
 #button_show_menu {
     position: fixed; 
     top:6px; 
