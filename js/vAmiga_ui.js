@@ -3005,15 +3005,16 @@ function InitWrappers() {
 
     add_click("button_show_menu", function() {
         //iPadOS27 Bug: when the navbar is collapsed, the menu button toggles it blurs the top area
-        //$('#navbar').collapse('toggle');
+        $('#navbar').collapse('toggle');
         //so we do it manually here instead of using the bootstrap collapse toggle
-        let navbar = document.getElementById('navbar');
+/*        let navbar = document.getElementById('navbar');
         if(navbar.style.top === '-150px')
         {
             navbar.style.top = '0px';
         } else {
             navbar.style.top = '-150px';
         }
+*/
     });
 
     burger_time_out_handle=null
