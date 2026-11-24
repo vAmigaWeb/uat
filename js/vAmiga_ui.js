@@ -3003,6 +3003,15 @@ function InitWrappers() {
     $('#navbar').on('shown.bs.collapse', function () { 
     });
 
+    //iPadOS27 Bug: closing a modal while its text input still has the soft keyboard open
+    //leaves the page panned and blurs the top area. dismiss the keyboard before the modal
+    //hides and reset the scroll position afterwards.
+    $(document).on('hide.bs.modal', '.modal', function () {
+        if(this.contains(document.activeElement)) document.activeElement.blur();
+    }).on('hidden.bs.modal', '.modal', function () {
+        window.scrollTo(0,0);
+    });
+
     add_click("button_show_menu", function() {
         //iPadOS27 Bug: when the navbar is collapsed, the menu button toggles it blurs the top area
         //$('#navbar').collapse('toggle');
