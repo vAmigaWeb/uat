@@ -3003,7 +3003,7 @@ function InitWrappers() {
     $('#navbar').on('shown.bs.collapse', function () { 
     });
 
-    setTimeout(iPadOS27TopBlurBugfix, 200);
+    setTimeout(iPadOS27TopBlurBugfix, 0);
 
     add_click("button_show_menu", function() {
         $('#navbar').collapse('toggle');
@@ -7064,12 +7064,13 @@ async function emit_string(keys_to_emit_array, type_first_key_time=0, release_de
 //the static html, the status bar gets rendered dark gray instead of black.
 function iPadOS27TopBlurBugfix()
 {
-    if(document.getElementById('top_edge_anchor')) return;
+    const iPadOS27BugfixID='ipados27_top_blur_bugfix';
+    if(document.getElementById(iPadOS27BugfixID)) return;
     let anchor = document.createElement('div');
-    anchor.id = 'top_edge_anchor';
+    anchor.id = iPadOS27BugfixID;
     anchor.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999999';
     let child = document.createElement('div');
-    child.style.cssText = 'position:absolute;right:0;bottom:0;width:1px;height:1px;background:transparent;opacity:0.01';
+    child.style.cssText = 'position:absolute;right:0;bottom:0;width:1px;height:1px;background:transparent;opacity:0.0';
     anchor.appendChild(child);
     document.body.appendChild(anchor);
 }
