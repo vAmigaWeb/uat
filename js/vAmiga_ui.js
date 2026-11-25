@@ -3003,7 +3003,7 @@ function InitWrappers() {
     $('#navbar').on('shown.bs.collapse', function () { 
     });
 
-    setTimeout(iPadOS27TopBlurBugfix, 0);
+    setTimeout(iPadOS27TopBlurBugfix, 50);
 
     add_click("button_show_menu", function() {
         $('#navbar').collapse('toggle');
